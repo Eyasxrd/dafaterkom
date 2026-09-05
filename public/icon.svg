@@ -1,0 +1,11 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="64" fill="#8B4513"/>
+  <circle cx="256" cy="200" r="120" fill="#D2691E"/>
+  <rect x="156" y="180" width="200" height="140" rx="20" fill="#CD853F"/>
+  <rect x="200" y="280" width="112" height="40" rx="10" fill="#8B4513"/>
+  <path d="M356 220 Q400 220 400 260 Q400 300 356 300" stroke="#D2691E" stroke-width="20" fill="none" stroke-linecap="round"/>
+  <circle cx="220" cy="240" r="15" fill="#FFF5E6"/>
+  <circle cx="256" cy="240" r="15" fill="#FFF5E6"/>
+  <circle cx="292" cy="240" r="15" fill="#FFF5E6"/>
+  <text x="256" y="420" font-family="Arial, sans-serif" font-size="34" font-weight="bold" fill="#FFF5E6" text-anchor="middle" letter-spacing="2">DAFATERKOM</text>
+</svg>

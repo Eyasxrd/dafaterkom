@@ -1,0 +1,74 @@
+{
+  "name": "dafaterkom-system",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "postinstall": "prisma skills sync || exit 0",
+    "seed": "tsx prisma/seed.ts",
+    "electron:dev": "npm run dev",
+    "electron:build": "next build && tsc -p electron/tsconfig.json && electron-builder",
+    "electron:pack": "next build && tsc -p electron/tsconfig.json && electron-builder --dir"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "main": "electron/main.js",
+  "build": {
+    "appId": "com.dafaterkom.pos",
+    "productName": "Dafaterkom POS",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "out/**/*",
+      "public/**/*",
+      "node_modules/**/*",
+      "prisma/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "@types/archiver": "^8.0.0",
+    "@types/bcryptjs": "^2.4.6",
+    "archiver": "^8.0.0",
+    "bcryptjs": "^3.0.3",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "lucide-react": "^1.41.0",
+    "next": "16.3.4",
+    "next-intl": "^4.14.2",
+    "prisma": "^5.22.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "tailwind-merge": "^3.6.0",
+    "tsx": "^4.23.13",
+    "xlsx": "^0.18.5",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^9.1.2",
+    "electron": "^44.2.0",
+    "electron-builder": "^26.15.3",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.4",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "wait-on": "^8.0.1"
+  }
+}

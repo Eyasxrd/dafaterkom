@@ -1,0 +1,327 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Tenant {
+  id              String   @id @default(uuid())
+  businessName    String
+  slug            String   @unique
+  plan            String   @default("starter") // "starter", "growth", "pro"
+  status          String   @default("trial")   // "trial", "active", "past_due", "suspended", "cancelled"
+  currency        String   @default("USD")
+  taxRate         Float    @default(15.0)
+  taxNumber       String?
+  receiptHeader   String?
+  receiptFooter   String?
+  geofenceLat     Float?
+  geofenceLng     Float?
+  geofenceRadius  Float    @default(200) // meters
+  trialEndsAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  staff           Staff[]
+  categories      Category[]
+  menuItems       MenuItem[]
+  ingredients     Ingredient[]
+  orders          Order[]
+  shifts          Shift[]
+  customers       Customer[]
+  devices         Device[]
+  licenses        License[]
+  syncEvents      SyncEvent[]
+  campaigns       LoyaltyCampaign[]
+  auditLogs       AuditLog[]
+  billingRecords  BillingRecord[]
+  tables          RestaurantTable[]
+}
+
+model Device {
+  id           String    @id @default(uuid())
+  tenantId     String    @default("default-shop")
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String
+  role         String    @default("terminal") // "hub", "terminal", "kds", "tablet"
+  pairingCode  String?
+  pairedAt     DateTime?
+  lastSyncedAt DateTime?
+  appVersion   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model License {
+  id           String    @id @default(uuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  signedToken  String
+  plan         String
+  maxDevices   Int       @default(1)
+  featureFlags String?   // JSON representation of enabled feature keys
+  issuedAt     DateTime  @default(now())
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model SyncEvent {
+  id          String   @id @default(uuid())
+  tenantId    String   @default("default-shop")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deviceId    String   @default("main-pos")
+  entityType  String   // "order", "orderItem", "inventory", "customer", etc.
+  entityId    String
+  action      String   // "create", "update", "delete"
+  payload     String   // JSON string
+  vectorClock Int      @default(1)
+  appliedAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  tenantId    String   @default("default-shop")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  staffId     String?
+  action      String   // "price_override", "discount_applied", "refund", "void", "drawer_open"
+  entityType  String
+  entityId    String?
+  beforeValue String?
+  afterValue  String?
+  notes       String?
+  timestamp   DateTime @default(now())
+}
+
+model Staff {
+  id          String   @id @default(uuid())
+  tenantId    String   @default("default-shop")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  email       String   @unique
+  password    String
+  role        String   // "admin", "manager", "cashier", "kitchen"
+  joinCode    String?  // 6-digit join code for self-registration
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  orders      Order[]
+  shifts      Shift[]
+}
+
+model Category {
+  id          String     @id @default(uuid())
+  tenantId    String     @default("default-shop")
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  items       MenuItem[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model MenuItem {
+  id          String      @id @default(uuid())
+  tenantId    String      @default("default-shop")
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  price       Float
+  categoryId  String
+  category    Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  imageUrl    String?
+  isAvailable Boolean     @default(true)
+  inventory   Inventory?
+  recipes     Recipe[]
+  orderItems  OrderItem[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Ingredient {
+  id                String    @id @default(uuid())
+  tenantId          String    @default("default-shop")
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name              String
+  description       String?
+  quantity          Float     @default(0)
+  unit              String    // "pieces", "kg", "liters", "grams", etc.
+  lowStockThreshold Float     @default(10)
+  lastRestocked     DateTime?
+  recipes           Recipe[]
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([tenantId, name])
+}
+
+model Recipe {
+  id           String     @id @default(uuid())
+  menuItemId   String
+  menuItem     MenuItem   @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  quantity     Float      // Amount of ingredient needed
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([menuItemId, ingredientId])
+}
+
+model Inventory {
+  id                String    @id @default(uuid())
+  menuItemId        String    @unique
+  menuItem          MenuItem  @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  quantity          Int       @default(0)
+  unit              String    // "pieces", "kg", "liters", etc.
+  lowStockThreshold Int       @default(10)
+  lastRestocked     DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  tenantId        String      @default("default-shop")
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderNumber     String      @unique
+  staffId         String
+  staff           Staff       @relation(fields: [staffId], references: [id])
+  subtotal        Float       @default(0)
+  tax             Float       @default(0)
+  discount        Float       @default(0)
+  totalAmount     Float
+  paymentMethod   String      // "cash", "card", "mobile"
+  paymentStatus   String      @default("pending") // "pending", "completed", "refunded"
+  orderStatus     String      @default("pending") // "pending", "preparing", "ready", "completed", "cancelled"
+  tableNumber     Int?
+  customerName    String?
+  customerEmail   String?
+  customerId      String?
+  customer        Customer?   @relation(fields: [customerId], references: [id])
+  notes           String?
+  deviceId        String?     // Device that originated the order
+  items           OrderItem[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model OrderItem {
+  id          String   @id @default(uuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId  String
+  menuItem    MenuItem @relation(fields: [menuItemId], references: [id])
+  quantity    Int
+  price       Float    // Price at time of order
+  subtotal    Float
+  notes       String?  // Modifiers and customizations e.g. "Size: Large, Oat Milk"
+  createdAt   DateTime @default(now())
+}
+
+model Shift {
+  id          String    @id @default(uuid())
+  tenantId    String    @default("default-shop")
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  staffId     String
+  staff       Staff     @relation(fields: [staffId], references: [id])
+  startTime   DateTime  @default(now())
+  endTime     DateTime?
+  status      String    @default("active") // "active", "completed"
+  startCash   Float     @default(0)
+  endCash     Float?
+  cashSales   Float     @default(0)
+  cardSales   Float     @default(0)
+  totalOrders Int       @default(0)
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Customer {
+  id            String            @id @default(uuid())
+  tenantId      String            @default("default-shop")
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name          String
+  email         String?
+  phone         String?
+  loyaltyPoints Int               @default(0)
+  orders        Order[]
+  consents      CustomerConsent[]
+  notifications NotificationLog[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([tenantId, phone])
+}
+
+model CustomerConsent {
+  id          String    @id @default(uuid())
+  customerId  String
+  customer    Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  consentType String    // "marketing_sms", "proximity_push", "data_processing"
+  granted     Boolean   @default(true)
+  grantedAt   DateTime  @default(now())
+  revokedAt   DateTime?
+}
+
+model LoyaltyCampaign {
+  id                String            @id @default(uuid())
+  tenantId          String            @default("default-shop")
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name              String
+  triggerType       String            // "proximity", "inactivity", "manual"
+  rewardDescription String
+  pointsCost        Int               @default(0)
+  discountPercent   Float?
+  cooldownHours     Int               @default(12)
+  isActive          Boolean           @default(true)
+  rulesJson         String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  notificationLogs  NotificationLog[]
+}
+
+model NotificationLog {
+  id         String           @id @default(uuid())
+  campaignId String?
+  campaign   LoyaltyCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  customerId String
+  customer   Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  channel    String           // "push", "sms"
+  message    String
+  sentAt     DateTime         @default(now())
+  openedAt   DateTime?
+  redeemedAt DateTime?
+}
+
+model BillingRecord {
+  id              String   @id @default(uuid())
+  tenantId        String   @default("default-shop")
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  amount          Float
+  currency        String   @default("USD")
+  status          String   // "paid", "pending", "failed"
+  periodStart     DateTime
+  periodEnd       DateTime
+  invoiceNumber   String?
+  paymentProvider String?
+  createdAt       DateTime @default(now())
+}
+
+model RestaurantTable {
+  id        String   @id @default(uuid())
+  tenantId  String   @default("default-shop")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  number    Int
+  name      String?
+  capacity  Int      @default(4)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, number])
+}
