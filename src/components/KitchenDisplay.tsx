@@ -12,8 +12,10 @@ import {
   Flame, 
   Bell, 
   CheckCircle2, 
-  Clock 
+  Clock,
+  Printer
 } from 'lucide-react'
+import KitchenTicketModal, { KitchenTicketData } from '@/components/KitchenTicketModal'
 
 interface OrderItem {
   id: string
@@ -41,6 +43,7 @@ export default function KitchenDisplay() {
   const [filter, setFilter] = useState<'all' | 'pending' | 'preparing' | 'ready'>('all')
   const [now, setNow] = useState(Date.now())
   const [soundEnabled, setSoundEnabled] = useState(true)
+  const [selectedTicket, setSelectedTicket] = useState<KitchenTicketData | null>(null)
   const previousOrderCount = useRef<number>(0)
 
   // Web Audio API beep sound for new orders
@@ -71,14 +74,9 @@ export default function KitchenDisplay() {
 
   const fetchOrders = async () => {
     try {
-      const res = await fetch('/api/orders')
-      const data = await res.json()
-      if (Array.isArray(data)) {
-        // Filter out completed and cancelled orders
-        const active = data.filter(
-          (o: any) => o.orderStatus === 'pending' || o.orderStatus === 'preparing' || o.orderStatus === 'ready'
-        )
-
+      const res = await fetch('/api/orders/kitchen')
+      const active = await res.json()
+      if (Array.isArray(active)) {
         // Sound alert if new order arrived
         if (previousOrderCount.current > 0 && active.length > previousOrderCount.current) {
           playNewOrderSound()
@@ -248,10 +246,36 @@ export default function KitchenDisplay() {
                         {order.tableNumber ? `TABLE #${order.tableNumber}` : 'TAKEAWAY'}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-base font-black font-mono flex items-center gap-1 justify-end">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>{timer.formatted}</span>
+                    <div className="text-right flex flex-col items-end">
+                      <div className="flex items-center gap-2 justify-end">
+                        <div className="text-base font-black font-mono flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{timer.formatted}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedTicket({
+                              orderNumber: order.orderNumber,
+                              createdAt: order.createdAt,
+                              tableNumber: order.tableNumber,
+                              customerName: order.customerName,
+                              notes: order.notes,
+                              station: 'BARISTA & KITCHEN',
+                              items: order.items.map(i => ({
+                                name: i.menuItem.name,
+                                quantity: i.quantity,
+                                notes: i.notes,
+                                category: i.menuItem.category?.name
+                              }))
+                            })
+                          }}
+                          className="p-1 rounded bg-black/15 hover:bg-black/30 transition-colors text-white cursor-pointer"
+                          title="Print Kitchen Ticket (KOT)"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                       <div className="text-[10px] uppercase tracking-wider font-semibold opacity-90">{order.orderStatus}</div>
                     </div>
@@ -333,6 +357,13 @@ export default function KitchenDisplay() {
           })}
         </div>
       )}
+
+      {/* Printable Kitchen Ticket Modal */}
+      <KitchenTicketModal
+        isOpen={!!selectedTicket}
+        onClose={() => setSelectedTicket(null)}
+        ticket={selectedTicket}
+      />
     </div>
   )
 }

@@ -126,7 +126,7 @@ export default function Home() {
         onPageChange={setCurrentPage}
         onOpenWizard={() => handleOpenWizard(1)}
       />
-      <main className="flex-1 md:ml-64 mb-16 md:mb-0 pt-4">
+      <main className="flex-1 md:ms-64 mb-16 md:mb-0 pt-4 px-2 md:px-6">
         <SubscriptionBanner onNavigateToBilling={() => setCurrentPage('subscription')} />
         {renderPage()}
       </main>

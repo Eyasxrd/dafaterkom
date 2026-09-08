@@ -1,10 +1,11 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Coffee, Printer, QrCode } from 'lucide-react'
+import { Coffee, Printer, QrCode, MessageCircle, ChefHat } from 'lucide-react'
 import AppleWalletButton from '@/components/loyalty/AppleWalletButton'
+import { generateZatcaQrDataUrl } from '@/lib/zatca'
 
 export interface ReceiptData {
   orderNumber: string
@@ -39,9 +40,26 @@ interface ReceiptModalProps {
   isOpen: boolean
   onClose: () => void
   receipt: ReceiptData | null
+  onPrintKot?: () => void
 }
 
-export default function ReceiptModal({ isOpen, onClose, receipt }: ReceiptModalProps) {
+export default function ReceiptModal({ isOpen, onClose, receipt, onPrintKot }: ReceiptModalProps) {
+  const [zatcaQrUrl, setZatcaQrUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (receipt) {
+      generateZatcaQrDataUrl({
+        sellerName: receipt.businessName || 'Dafaterkom Café',
+        vatNumber: receipt.taxNumber || '300000000000003',
+        timestamp: new Date(receipt.createdAt).toISOString(),
+        totalWithVat: receipt.totalAmount,
+        vatAmount: receipt.tax || 0
+      })
+        .then(setZatcaQrUrl)
+        .catch((err) => console.error('Failed to generate ZATCA QR:', err))
+    }
+  }, [receipt])
+
   if (!receipt) return null
 
   const handlePrint = () => {
@@ -52,6 +70,29 @@ export default function ReceiptModal({ isOpen, onClose, receipt }: ReceiptModalP
     dateStyle: 'medium',
     timeStyle: 'short'
   })
+
+  const handleWhatsAppShare = () => {
+    const itemsText = receipt.items.map(i => `• ${i.name} x${i.quantity} - $${i.subtotal.toFixed(2)}`).join('\n')
+    const message = `🧾 *${receipt.businessName || 'Dafaterkom Café'}*
+Order #${receipt.orderNumber}
+Date: ${formattedDate}
+-------------------------
+${itemsText}
+-------------------------
+Subtotal: $${receipt.subtotal.toFixed(2)}
+${receipt.discount ? `Discount: -$${receipt.discount.toFixed(2)}\n` : ''}Tax (VAT): +$${(receipt.tax || 0).toFixed(2)}
+*Total: $${receipt.totalAmount.toFixed(2)}*
+Payment: ${receipt.paymentMethod.toUpperCase()}
+-------------------------
+Thank you for your visit!`
+
+    const cleanPhone = receipt.customerPhone ? receipt.customerPhone.replace(/[^0-9]/g, '') : ''
+    const url = cleanPhone 
+      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`
+      : `https://wa.me/?text=${encodeURIComponent(message)}`
+
+    window.open(url, '_blank')
+  }
 
   const effectiveTaxRate = receipt.taxRate ?? 15
 
@@ -200,13 +241,23 @@ export default function ReceiptModal({ isOpen, onClose, receipt }: ReceiptModalP
               </div>
             </div>
 
-            {/* Compliant E-Invoicing & Loyalty QR Code mockup */}
-            <div className="text-center py-2 flex flex-col items-center justify-center space-y-1 border-b border-dashed border-zinc-400 dark:border-zinc-700 pb-3 mb-3">
-              <div className="w-20 h-20 bg-white border border-zinc-300 dark:border-zinc-700 rounded p-1 flex items-center justify-center">
-                <QrCode className="w-16 h-16 text-zinc-900" />
-              </div>
-              <span className="text-[9px] text-zinc-500 dark:text-zinc-400 font-mono">
-                Scan for E-Invoice & Loyalty Rewards
+            {/* Compliant ZATCA E-Invoicing QR Code */}
+            <div className="text-center py-2 flex flex-col items-center justify-center space-y-1.5 border-b border-dashed border-zinc-400 dark:border-zinc-700 pb-3 mb-3">
+              {zatcaQrUrl ? (
+                <div className="bg-white p-1 rounded border border-zinc-300 dark:border-zinc-700 inline-block shadow-xs">
+                  <img
+                    src={zatcaQrUrl}
+                    alt="ZATCA Tax E-Invoice QR"
+                    className="w-24 h-24 object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="w-20 h-20 bg-white border border-zinc-300 dark:border-zinc-700 rounded p-1 flex items-center justify-center">
+                  <QrCode className="w-16 h-16 text-zinc-900" />
+                </div>
+              )}
+              <span className="text-[9px] text-zinc-500 dark:text-zinc-400 font-mono tracking-tight">
+                ZATCA Phase 1 & 2 Compliant E-Invoice
               </span>
             </div>
 
@@ -242,10 +293,31 @@ export default function ReceiptModal({ isOpen, onClose, receipt }: ReceiptModalP
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-2 pt-3 no-print">
-            <Button onClick={handlePrint} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2">
+          <div className="flex flex-wrap gap-2 pt-3 no-print">
+            <Button onClick={handlePrint} className="flex-1 min-w-[140px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2">
               <Printer className="w-4 h-4" />
               <span>Print 80mm Receipt</span>
+            </Button>
+            {onPrintKot && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onPrintKot}
+                className="border-amber-500 text-amber-600 hover:bg-amber-50 dark:border-amber-600 dark:text-amber-400 font-bold gap-1.5"
+                title="Print Kitchen Ticket (KOT)"
+              >
+                <ChefHat className="w-4 h-4 text-amber-500" />
+                <span>Print KOT</span>
+              </Button>
+            )}
+            <Button
+              type="button"
+              onClick={handleWhatsAppShare}
+              className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold gap-1.5"
+              title="Share via WhatsApp"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>WhatsApp</span>
             </Button>
             <Button variant="outline" onClick={onClose}>
               Close

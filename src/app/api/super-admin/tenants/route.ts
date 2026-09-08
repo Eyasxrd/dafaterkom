@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { logAuditEvent } from '@/lib/audit'
 import { generateLicenseToken, PlanTier } from '@/lib/licensing/license-verifier'
+import { getAuthenticatedUser } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
+    const session = getAuthenticatedUser(request)
+    if (!session || (session.role !== 'admin' && session.role !== 'superadmin')) {
+      return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 403 })
+    }
+
     const tenants = await prisma.tenant.findMany({
       include: {
         _count: {
@@ -30,6 +36,11 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const session = getAuthenticatedUser(request)
+    if (!session || (session.role !== 'admin' && session.role !== 'superadmin')) {
+      return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 403 })
+    }
+
     const body = await request.json()
     const { tenantId, action, days, plan, status } = body
 

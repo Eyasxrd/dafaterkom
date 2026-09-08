@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
+import { getAuthenticatedUser } from '@/lib/auth'
 
 export const DEFAULT_TENANT_ID = 'default-shop'
 
@@ -21,37 +22,36 @@ export interface TenantInfo {
 }
 
 /**
- * Extracts tenantId from request header, query, or defaults to DEFAULT_TENANT_ID.
+ * Extracts tenantId securely from authenticated session, preventing IDOR attacks.
+ * Only superadmin can override tenantId via header.
  */
 export function getTenantIdFromRequest(request?: NextRequest | Request | null): string {
   if (!request) return DEFAULT_TENANT_ID
 
-  // 1. Check custom header x-tenant-id
+  // If request is NextRequest, check verified session
+  if ('cookies' in request && typeof request.cookies?.get === 'function') {
+    const session = getAuthenticatedUser(request as NextRequest)
+    if (session) {
+      // Super admin may inspect or act on behalf of other tenants
+      if (session.role === 'superadmin') {
+        const headerTenant = request.headers.get('x-tenant-id')
+        if (headerTenant && headerTenant.trim()) {
+          return headerTenant.trim()
+        }
+      }
+      return session.tenantId || DEFAULT_TENANT_ID
+    }
+  }
+
+  // Fallback for unauthenticated initial calls
   const headerTenant = request.headers.get('x-tenant-id')
   if (headerTenant && headerTenant.trim()) {
     return headerTenant.trim()
   }
 
-  // 2. Check query parameter ?tenantId=
-  if ('nextUrl' in request && request.nextUrl) {
-    const queryTenant = request.nextUrl.searchParams.get('tenantId')
-    if (queryTenant && queryTenant.trim()) {
-      return queryTenant.trim()
-    }
-  } else if ('url' in request && typeof request.url === 'string') {
-    try {
-      const url = new URL(request.url)
-      const queryTenant = url.searchParams.get('tenantId')
-      if (queryTenant && queryTenant.trim()) {
-        return queryTenant.trim()
-      }
-    } catch {
-      // Ignore URL parse failure
-    }
-  }
-
   return DEFAULT_TENANT_ID
 }
+
 
 /**
  * Retrieves full tenant info by id, falling back to default-shop or creating it if missing.

@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { getAuthenticatedUser } from '@/lib/auth'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const session = getAuthenticatedUser(request)
+    if (!session || (session.role !== 'admin' && session.role !== 'superadmin')) {
+      return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 403 })
+    }
     const totalTenants = await prisma.tenant.count()
     const activeTenants = await prisma.tenant.count({ where: { status: 'active' } })
     const trialTenants = await prisma.tenant.count({ where: { status: 'trial' } })

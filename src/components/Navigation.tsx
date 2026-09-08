@@ -1,10 +1,12 @@
 'use client'
 
+import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import ThemeToggle from '@/components/ThemeToggle'
 import LanguageToggle from '@/components/LanguageToggle'
 import SyncStatusBadge from '@/components/SyncStatusBadge'
+import ThemeSelectorModal from '@/components/theme/ThemeSelectorModal'
 import { useAuthStore } from '@/lib/store'
 import { 
   ShoppingCart, 
@@ -22,7 +24,8 @@ import {
   Sparkles,
   Building2,
   Sliders,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Palette
 } from 'lucide-react'
 
 interface NavigationProps {
@@ -56,6 +59,8 @@ export default function Navigation({ currentPage, onPageChange, onOpenWizard }: 
     !item.adminOnly || (user && (user.role === 'admin' || user.role === 'manager'))
   )
 
+  const [isThemeModalOpen, setIsThemeModalOpen] = useState(false)
+
   const handleLogout = () => {
     logout()
   }
@@ -63,7 +68,7 @@ export default function Navigation({ currentPage, onPageChange, onOpenWizard }: 
   return (
     <>
       {/* Desktop Liquid Glass Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 glass-panel border-r border-slate-200/80 dark:border-white/[0.08] min-h-screen fixed top-0 left-0 z-40 p-4">
+      <aside className="hidden md:flex flex-col w-64 glass-panel border-e border-slate-200/80 dark:border-white/[0.08] min-h-screen fixed top-0 start-0 z-40 p-4">
         {/* Brand Header with Sync Status */}
         <div className="flex flex-col gap-2.5 px-3 py-3 mb-4 rounded-2xl bg-white/40 dark:bg-white/[0.04] border border-white/60 dark:border-white/[0.08]">
           <div className="flex items-center gap-3">
@@ -95,7 +100,7 @@ export default function Navigation({ currentPage, onPageChange, onOpenWizard }: 
         </div>
 
         {/* Navigation Items */}
-        <div className="space-y-1 flex-1 overflow-y-auto pr-1">
+        <div className="space-y-1 flex-1 overflow-y-auto pe-1">
           {filteredMenuItems.map((item) => {
             const Icon = item.icon
             const isActive = currentPage === item.id
@@ -104,7 +109,7 @@ export default function Navigation({ currentPage, onPageChange, onOpenWizard }: 
               <button
                 key={item.id}
                 onClick={() => onPageChange(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-all duration-200 text-left cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-all duration-200 ltr:text-left rtl:text-right cursor-pointer ${
                   isActive
                     ? 'liquid-btn-primary shadow-md'
                     : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100/70 dark:hover:bg-white/[0.06] hover:text-slate-900 dark:hover:text-white'
@@ -129,7 +134,16 @@ export default function Navigation({ currentPage, onPageChange, onOpenWizard }: 
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsThemeModalOpen(true)}
+              className="h-8 w-8 p-0 shrink-0 rounded-xl"
+              title="Change Theme & Colors"
+            >
+              <Palette className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+            </Button>
             <ThemeToggle />
             <LanguageToggle />
             <Button
@@ -145,6 +159,12 @@ export default function Navigation({ currentPage, onPageChange, onOpenWizard }: 
           </div>
         </div>
       </aside>
+
+      {/* Theme Selector Modal */}
+      <ThemeSelectorModal
+        isOpen={isThemeModalOpen}
+        onClose={() => setIsThemeModalOpen(false)}
+      />
 
       {/* Mobile Bottom Liquid Glass Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 glass-panel border-t border-slate-200/80 dark:border-white/10 p-2 flex justify-around items-center z-50 overflow-x-auto">
@@ -166,6 +186,14 @@ export default function Navigation({ currentPage, onPageChange, onOpenWizard }: 
             </button>
           )
         })}
+        <button
+          type="button"
+          onClick={() => setIsThemeModalOpen(true)}
+          className="flex flex-col items-center p-1.5 rounded-xl transition-all text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+        >
+          <Palette className="w-4 h-4" />
+          <span className="text-[9px] mt-0.5 font-medium truncate max-w-[60px]">Theme</span>
+        </button>
       </nav>
     </>
   )

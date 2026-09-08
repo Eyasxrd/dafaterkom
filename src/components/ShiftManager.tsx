@@ -19,7 +19,11 @@ import {
   CheckCircle2, 
   Sparkles,
   Delete,
-  Timer
+  Timer,
+  Coins,
+  ArrowDownRight,
+  ArrowUpRight,
+  Receipt
 } from 'lucide-react'
 
 interface Shift {
@@ -40,6 +44,14 @@ interface Shift {
   }
 }
 
+export interface PettyCashItem {
+  id: string
+  type: 'cash_in' | 'cash_out'
+  amount: number
+  reason: string
+  timestamp: string | Date
+}
+
 interface ActiveShiftData {
   shift: Shift | null
   stats: {
@@ -48,6 +60,9 @@ interface ActiveShiftData {
     cardSales: number
     totalSales: number
     expectedCash: number
+    cashInTotal?: number
+    cashOutTotal?: number
+    pettyCashItems?: PettyCashItem[]
   } | null
 }
 
@@ -75,6 +90,14 @@ export default function ShiftManager() {
   const [closingCash, setClosingCash] = useState('')
   const [closeNotes, setCloseNotes] = useState('')
   const [zReportData, setZReportData] = useState<any | null>(null)
+
+  // Petty Cash modal state
+  const [isPettyCashOpen, setIsPettyCashOpen] = useState(false)
+  const [pettyCashType, setPettyCashType] = useState<'cash_in' | 'cash_out'>('cash_out')
+  const [pettyCashAmount, setPettyCashAmount] = useState('')
+  const [pettyCashReason, setPettyCashReason] = useState('')
+  const [pettyCashSubmitting, setPettyCashSubmitting] = useState(false)
+  const [pettyCashError, setPettyCashError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchActiveShift()
@@ -198,6 +221,51 @@ export default function ShiftManager() {
     }
   }
 
+  const handlePettyCashSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!activeData.shift) return
+    const amountNum = parseFloat(pettyCashAmount)
+    if (isNaN(amountNum) || amountNum <= 0) {
+      setPettyCashError('Please enter a valid amount greater than zero')
+      return
+    }
+    if (!pettyCashReason.trim()) {
+      setPettyCashError('Please provide a reason or category for this cash movement')
+      return
+    }
+
+    setPettyCashSubmitting(true)
+    setPettyCashError(null)
+
+    try {
+      const res = await fetch('/api/shifts/petty-cash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shiftId: activeData.shift.id,
+          staffId: user?.id,
+          type: pettyCashType,
+          amount: amountNum,
+          reason: pettyCashReason.trim()
+        })
+      })
+
+      const data = await res.json()
+      if (res.ok) {
+        setIsPettyCashOpen(false)
+        setPettyCashAmount('')
+        setPettyCashReason('')
+        fetchActiveShift()
+      } else {
+        setPettyCashError(data.error || 'Failed to record cash movement')
+      }
+    } catch (err: any) {
+      setPettyCashError(err.message || 'Failed to record cash movement')
+    } finally {
+      setPettyCashSubmitting(false)
+    }
+  }
+
   // Simulate NFC Scan or trigger Web NFC
   const handleTriggerNFCScan = async () => {
     setNfcScanning(true)
@@ -273,17 +341,33 @@ export default function ShiftManager() {
             <span>Clock In / Start Shift</span>
           </Button>
         ) : (
-          <Button
-            onClick={() => {
-              setClosingCash(stats?.expectedCash.toFixed(2) || '0.00')
-              setIsCloseShiftOpen(true)
-            }}
-            variant="destructive"
-            className="font-bold gap-2 text-sm h-10 px-5 shadow-lg"
-          >
-            <Square className="w-4 h-4 fill-current" />
-            <span>Clock Out / End Shift</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => {
+                setPettyCashError(null)
+                setPettyCashAmount('')
+                setPettyCashReason('')
+                setPettyCashType('cash_out')
+                setIsPettyCashOpen(true)
+              }}
+              variant="outline"
+              className="font-bold gap-2 text-sm h-10 px-4 border-amber-500/40 hover:bg-amber-500/10 text-amber-600 dark:text-amber-400"
+            >
+              <Coins className="w-4 h-4 text-amber-500" />
+              <span>Petty Cash (In/Out)</span>
+            </Button>
+            <Button
+              onClick={() => {
+                setClosingCash(stats?.expectedCash.toFixed(2) || '0.00')
+                setIsCloseShiftOpen(true)
+              }}
+              variant="destructive"
+              className="font-bold gap-2 text-sm h-10 px-5 shadow-lg"
+            >
+              <Square className="w-4 h-4 fill-current" />
+              <span>Clock Out / End Shift</span>
+            </Button>
+          </div>
         )}
       </div>
 
@@ -337,31 +421,92 @@ export default function ShiftManager() {
             </div>
           </div>
 
-          <CardContent className="pt-4">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
-              <div className="p-3.5 rounded-2xl bg-white/40 dark:bg-white/[0.04] border border-slate-200/60 dark:border-white/[0.08]">
-                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Opening Float</p>
-                <p className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">${shift.startCash.toFixed(2)}</p>
+          <CardContent className="pt-4 space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-center">
+              <div className="p-3 rounded-2xl bg-white/40 dark:bg-white/[0.04] border border-slate-200/60 dark:border-white/[0.08]">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Opening Float</p>
+                <p className="text-lg font-extrabold text-slate-900 dark:text-white mt-1">${shift.startCash.toFixed(2)}</p>
               </div>
-              <div className="p-3.5 rounded-2xl bg-white/40 dark:bg-white/[0.04] border border-slate-200/60 dark:border-white/[0.08]">
-                <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Cash Sales</p>
-                <p className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">${stats.cashSales.toFixed(2)}</p>
+              <div className="p-3 rounded-2xl bg-white/40 dark:bg-white/[0.04] border border-slate-200/60 dark:border-white/[0.08]">
+                <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Cash Sales</p>
+                <p className="text-lg font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">+${stats.cashSales.toFixed(2)}</p>
               </div>
-              <div className="p-3.5 rounded-2xl bg-white/40 dark:bg-white/[0.04] border border-slate-200/60 dark:border-white/[0.08]">
-                <p className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Card / Mobile</p>
-                <p className="text-xl font-extrabold text-blue-600 dark:text-blue-400 mt-1">${stats.cardSales.toFixed(2)}</p>
+              <div className="p-3 rounded-2xl bg-white/40 dark:bg-white/[0.04] border border-slate-200/60 dark:border-white/[0.08]">
+                <p className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Petty Cash In</p>
+                <p className="text-lg font-extrabold text-blue-600 dark:text-blue-400 mt-1">+${(stats.cashInTotal || 0).toFixed(2)}</p>
               </div>
-              <div className="p-3.5 rounded-2xl bg-white/40 dark:bg-white/[0.04] border border-slate-200/60 dark:border-white/[0.08]">
-                <p className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Orders Served</p>
-                <p className="text-xl font-extrabold text-indigo-600 dark:text-indigo-400 mt-1">{stats.totalOrders}</p>
+              <div className="p-3 rounded-2xl bg-white/40 dark:bg-white/[0.04] border border-slate-200/60 dark:border-white/[0.08]">
+                <p className="text-[10px] font-semibold text-rose-600 dark:text-rose-400 uppercase tracking-wider">Petty Cash Out</p>
+                <p className="text-lg font-extrabold text-rose-600 dark:text-rose-400 mt-1">-${(stats.cashOutTotal || 0).toFixed(2)}</p>
               </div>
-              <div className="p-3.5 rounded-2xl bg-blue-500/10 dark:bg-blue-500/15 border border-blue-500/30 dark:border-blue-400/20">
-                <p className="text-[11px] font-bold text-blue-600 dark:text-blue-300 uppercase tracking-wider">Expected Cash</p>
-                <p className="text-2xl font-black text-blue-700 dark:text-blue-200 mt-1">
+              <div className="p-3 rounded-2xl bg-white/40 dark:bg-white/[0.04] border border-slate-200/60 dark:border-white/[0.08]">
+                <p className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Card / Mobile</p>
+                <p className="text-lg font-extrabold text-indigo-600 dark:text-indigo-400 mt-1">${stats.cardSales.toFixed(2)}</p>
+              </div>
+              <div className="p-3 rounded-2xl bg-blue-500/10 dark:bg-blue-500/15 border border-blue-500/30 dark:border-blue-400/20">
+                <p className="text-[10px] font-bold text-blue-600 dark:text-blue-300 uppercase tracking-wider">Expected Cash</p>
+                <p className="text-xl font-black text-blue-700 dark:text-blue-200 mt-1">
                   ${stats.expectedCash.toFixed(2)}
                 </p>
               </div>
             </div>
+
+            {/* Petty Cash Activity Feed */}
+            {stats.pettyCashItems && stats.pettyCashItems.length > 0 && (
+              <div className="pt-2 border-t border-slate-200/60 dark:border-white/[0.08] space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-bold text-slate-500 uppercase text-[10px] tracking-wider">
+                    Shift Cash Drawer Activity Log ({stats.pettyCashItems.length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPettyCashError(null)
+                      setPettyCashAmount('')
+                      setPettyCashReason('')
+                      setPettyCashType('cash_out')
+                      setIsPettyCashOpen(true)
+                    }}
+                    className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                  >
+                    + Record Payout / Float
+                  </button>
+                </div>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                  {stats.pettyCashItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between p-2 rounded-xl bg-white/40 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06] text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        {item.type === 'cash_in' ? (
+                          <span className="flex items-center gap-1 font-bold text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                            <ArrowDownRight className="w-3.5 h-3.5" />
+                            Cash In
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 font-bold text-[11px] text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full">
+                            <ArrowUpRight className="w-3.5 h-3.5" />
+                            Cash Out
+                          </span>
+                        )}
+                        <span className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-xs">
+                          {item.reason}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-right">
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <span className={`font-black ${item.type === 'cash_in' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {item.type === 'cash_in' ? '+' : '-'}${item.amount.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -633,16 +778,28 @@ export default function ShiftManager() {
             <DialogTitle>End Shift & Z-Report Reconciliation</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
-            <div className="p-3 bg-blue-50 dark:bg-blue-950/40 rounded-xl border border-blue-200/60 dark:border-blue-900/40 text-xs space-y-1">
+            <div className="p-3 bg-blue-50 dark:bg-blue-950/40 rounded-xl border border-blue-200/60 dark:border-blue-900/40 text-xs space-y-1.5">
               <div className="flex justify-between">
-                <span>Opening Cash:</span>
+                <span>Opening Float:</span>
                 <span className="font-semibold">${shift?.startCash.toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Shift Cash Sales:</span>
                 <span className="font-semibold text-emerald-600">+${stats?.cashSales.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-1 font-bold">
+              {(stats?.cashInTotal ?? 0) > 0 && (
+                <div className="flex justify-between">
+                  <span>Petty Cash In (Float Added):</span>
+                  <span className="font-semibold text-blue-600">+${stats?.cashInTotal?.toFixed(2)}</span>
+                </div>
+              )}
+              {(stats?.cashOutTotal ?? 0) > 0 && (
+                <div className="flex justify-between">
+                  <span>Petty Cash Out (Expenses/Payouts):</span>
+                  <span className="font-semibold text-rose-600">-${stats?.cashOutTotal?.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-1.5 font-bold text-sm">
                 <span>Expected Drawer Total:</span>
                 <span className="text-blue-600 dark:text-blue-400">${stats?.expectedCash.toFixed(2)}</span>
               </div>
@@ -679,6 +836,254 @@ export default function ShiftManager() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Petty Cash (Cash In / Out) Modal */}
+      <Dialog open={isPettyCashOpen} onOpenChange={setIsPettyCashOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <Coins className="w-5 h-5 text-amber-500" />
+              <span>Petty Cash & Drawer Movement</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handlePettyCashSubmit} className="space-y-4 pt-2">
+            {pettyCashError && (
+              <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-medium">
+                {pettyCashError}
+              </div>
+            )}
+
+            {/* Type selector: Cash Out (Payout) vs Cash In (Float) */}
+            <div className="grid grid-cols-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setPettyCashType('cash_out')}
+                className={`py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  pettyCashType === 'cash_out'
+                    ? 'bg-rose-500 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <ArrowUpRight className="w-4 h-4" />
+                <span>Cash Out (Payout)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPettyCashType('cash_in')}
+                className={`py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  pettyCashType === 'cash_in'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <ArrowDownRight className="w-4 h-4" />
+                <span>Cash In (Add Float)</span>
+              </button>
+            </div>
+
+            {/* Amount input + Quick Presets */}
+            <div>
+              <Label className="text-xs font-semibold">
+                Amount to {pettyCashType === 'cash_out' ? 'Withdraw ($)' : 'Deposit ($)'}
+              </Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                autoFocus
+                value={pettyCashAmount}
+                onChange={(e) => setPettyCashAmount(e.target.value)}
+                placeholder="0.00"
+                className="font-bold text-lg mt-1"
+              />
+              <div className="flex gap-1.5 mt-2">
+                {['5', '10', '20', '50', '100'].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setPettyCashAmount(preset)}
+                    className="flex-1 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                  >
+                    +${preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Reason / Category */}
+            <div>
+              <Label className="text-xs font-semibold">Reason / Description</Label>
+              <Input
+                required
+                value={pettyCashReason}
+                onChange={(e) => setPettyCashReason(e.target.value)}
+                placeholder={
+                  pettyCashType === 'cash_out'
+                    ? 'e.g. Bought emergency milk / lemons, delivery tip'
+                    : 'e.g. Added $1 coins roll, extra register float'
+                }
+                className="mt-1"
+              />
+              {/* Quick suggestions */}
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {(pettyCashType === 'cash_out'
+                  ? ['Store Supplies', 'Fresh Ingredients', 'Ice / Water Delivery', 'Supplier COD', 'Emergency Repair']
+                  : ['Change Float Top-Up', 'Tip Addition', 'Float Adjustment']
+                ).map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => setPettyCashReason(suggestion)}
+                    className="text-[10px] font-medium px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t border-slate-200/60 dark:border-white/[0.08]">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsPettyCashOpen(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={pettyCashSubmitting}
+                className={`flex-1 font-bold ${
+                  pettyCashType === 'cash_out'
+                    ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                }`}
+              >
+                {pettyCashSubmitting
+                  ? 'Saving...'
+                  : pettyCashType === 'cash_out'
+                  ? 'Record Cash Out'
+                  : 'Record Cash In'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Official Z-Report Reconciliation Modal */}
+      <Dialog open={!!zReportData} onOpenChange={(open) => !open && setZReportData(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <Receipt className="w-5 h-5 text-emerald-500" />
+              <span>Shift Z-Report & Audit Closure</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          {zReportData && (
+            <div className="space-y-4 pt-2 text-xs">
+              <div className="bg-white dark:bg-zinc-950 p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 font-mono space-y-2 select-none">
+                <div className="text-center border-b border-dashed border-zinc-300 dark:border-zinc-700 pb-2">
+                  <h3 className="font-bold text-sm text-zinc-900 dark:text-white uppercase">DAFATERKOM CAFÉ</h3>
+                  <p className="text-[10px] text-zinc-500">OFFICIAL REGISTER Z-REPORT</p>
+                  <p className="text-[10px] text-zinc-400">Shift ID: #{zReportData.shiftId.slice(0, 8)}</p>
+                </div>
+
+                <div className="space-y-1 text-[11px] border-b border-dashed border-zinc-300 dark:border-zinc-700 pb-2">
+                  <div className="flex justify-between">
+                    <span>Cashier:</span>
+                    <span className="font-semibold">{zReportData.staffName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Closed At:</span>
+                    <span>{new Date(zReportData.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total Orders:</span>
+                    <span className="font-bold">{zReportData.totalOrders}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1 text-[11px] border-b border-dashed border-zinc-300 dark:border-zinc-700 pb-2">
+                  <div className="flex justify-between">
+                    <span>Opening Float:</span>
+                    <span>${zReportData.startCash.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                    <span>Cash Sales:</span>
+                    <span>+${zReportData.cashSales.toFixed(2)}</span>
+                  </div>
+                  {(zReportData.cashInTotal ?? 0) > 0 && (
+                    <div className="flex justify-between text-blue-600 dark:text-blue-400">
+                      <span>Petty Cash In:</span>
+                      <span>+${zReportData.cashInTotal.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {(zReportData.cashOutTotal ?? 0) > 0 && (
+                    <div className="flex justify-between text-rose-600 dark:text-rose-400">
+                      <span>Petty Cash Out:</span>
+                      <span>-${zReportData.cashOutTotal.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-indigo-600 dark:text-indigo-400">
+                    <span>Card Sales:</span>
+                    <span>${zReportData.cardSales.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold pt-1 border-t border-zinc-200 dark:border-zinc-800">
+                    <span>Gross Sales:</span>
+                    <span>${zReportData.totalSales.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1 text-[11px] pt-1">
+                  <div className="flex justify-between">
+                    <span>Expected Drawer:</span>
+                    <span className="font-bold">${zReportData.expectedEndCash.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Counted Cash:</span>
+                    <span className="font-bold">${zReportData.countedEndCash.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-black text-sm pt-1 border-t border-zinc-200 dark:border-zinc-800">
+                    <span>Variance:</span>
+                    <span
+                      className={
+                        zReportData.cashDiscrepancy === 0
+                          ? 'text-zinc-600 dark:text-zinc-400'
+                          : zReportData.cashDiscrepancy > 0
+                          ? 'text-emerald-600'
+                          : 'text-rose-600'
+                      }
+                    >
+                      {zReportData.cashDiscrepancy > 0
+                        ? `+$${zReportData.cashDiscrepancy.toFixed(2)} (Over)`
+                        : zReportData.cashDiscrepancy < 0
+                        ? `-$${Math.abs(zReportData.cashDiscrepancy).toFixed(2)} (Short)`
+                        : '$0.00 (Balanced)'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => window.print()}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Print Z-Report</span>
+                </Button>
+                <Button variant="outline" onClick={() => setZReportData(null)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import { signSessionToken, setSessionCookie, clearSessionCookie } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -47,13 +48,32 @@ export async function POST(request: NextRequest) {
       isActive: staff.isActive
     };
 
-    return NextResponse.json({
+    const token = signSessionToken({
+      userId: staff.id,
+      tenantId: staff.tenantId,
+      name: staff.name,
+      email: staff.email,
+      role: staff.role
+    });
+
+    const response = NextResponse.json({
       user,
       ...user,
+      token,
       success: true
     });
+
+    setSessionCookie(response, token);
+    return response;
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
+export async function DELETE() {
+  const response = NextResponse.json({ success: true, message: 'Logged out successfully' });
+  clearSessionCookie(response);
+  return response;
+}
+

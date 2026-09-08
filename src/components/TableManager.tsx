@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import ReceiptModal, { ReceiptData } from '@/components/ReceiptModal'
+import TableTentModal from '@/components/TableTentModal'
 import { useAuthStore } from '@/lib/store'
 import { 
   RotateCcw, 
@@ -15,8 +16,21 @@ import {
   Armchair, 
   Users, 
   Plus,
-  Trash2
+  Trash2,
+  QrCode,
+  Bell,
+  CreditCard,
+  CheckCheck
 } from 'lucide-react'
+
+interface TableServiceRequest {
+  id: string
+  tableNumber: number
+  type: 'call_waiter' | 'request_bill'
+  status: 'pending' | 'resolved'
+  createdAt: string
+  notes?: string
+}
 
 interface RestaurantTable {
   id: string
@@ -58,10 +72,34 @@ export default function TableManager({ onSelectTableForPOS }: TableManagerProps)
 
   const [tables, setTables] = useState<RestaurantTable[]>([])
   const [activeOrders, setActiveOrders] = useState<TableOrder[]>([])
+  const [serviceRequests, setServiceRequests] = useState<TableServiceRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedTableOrder, setSelectedTableOrder] = useState<TableOrder | null>(null)
+  const [selectedTableForTent, setSelectedTableForTent] = useState<RestaurantTable | null>(null)
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null)
   const [isReceiptOpen, setIsReceiptOpen] = useState(false)
+
+  // Web Audio chime for incoming service alerts
+  const playServiceChime = () => {
+    try {
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext
+      if (!AudioCtxClass) return
+      const audioCtx = new AudioCtxClass()
+      const osc = audioCtx.createOscillator()
+      const gain = audioCtx.createGain()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime) // D5
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.12) // A5
+      gain.gain.setValueAtTime(0.18, audioCtx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.45)
+      osc.connect(gain)
+      gain.connect(audioCtx.destination)
+      osc.start()
+      osc.stop(audioCtx.currentTime + 0.45)
+    } catch {
+      // Audio playback silently bypassed if browser restricted
+    }
+  }
 
   // Add Table modal state
   const [isAddTableOpen, setIsAddTableOpen] = useState(false)
@@ -74,11 +112,48 @@ export default function TableManager({ onSelectTableForPOS }: TableManagerProps)
   useEffect(() => {
     fetchTables()
     fetchActiveOrders()
+    fetchServiceRequests()
     const interval = setInterval(() => {
       fetchActiveOrders()
-    }, 8000)
+      fetchServiceRequests()
+    }, 4000)
     return () => clearInterval(interval)
   }, [])
+
+  const fetchServiceRequests = async () => {
+    try {
+      const res = await fetch('/api/tables/service')
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          setServiceRequests((prev) => {
+            const prevIds = new Set(prev.map((r) => r.id))
+            const hasNew = data.some((d: any) => !prevIds.has(d.id))
+            if (hasNew && data.length > 0) {
+              playServiceChime()
+            }
+            return data
+          })
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch table service requests:', e)
+    }
+  }
+
+  const handleDismissService = async (tableNumber: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    try {
+      await fetch('/api/tables/service', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tableNumber })
+      })
+      setServiceRequests((prev) => prev.filter((r) => r.tableNumber !== tableNumber))
+    } catch (err) {
+      console.error('Failed to dismiss service request:', err)
+    }
+  }
 
   const fetchTables = async () => {
     try {
@@ -266,12 +341,59 @@ export default function TableManager({ onSelectTableForPOS }: TableManagerProps)
         </Card>
       </div>
 
+      {/* Active Service Requests Floor Alert Bar */}
+      {serviceRequests.length > 0 && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-amber-500/15 border border-amber-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-md animate-pulse">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-md animate-bounce">
+              <Bell className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <span>Active Table Service Calls ({serviceRequests.length})</span>
+                <span className="text-[10px] bg-rose-500 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-wider">Floor Alert</span>
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Guests are requesting waiter assistance or the check at their table
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {serviceRequests.map((req) => (
+              <div
+                key={req.id}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-amber-400/50 shadow-xs text-xs"
+              >
+                <span className="font-extrabold text-slate-900 dark:text-white">Table #{req.tableNumber}</span>
+                <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                  req.type === 'request_bill' 
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300' 
+                    : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                }`}>
+                  {req.type === 'request_bill' ? '💳 Bill' : '🛎️ Waiter'}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => handleDismissService(req.tableNumber, e)}
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-emerald-600 transition-colors cursor-pointer"
+                  title="Mark Resolved"
+                >
+                  <CheckCheck className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Dynamic Table Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
         {tables.map((table) => {
           const tableNum = table.number
           const order = getTableOrder(tableNum)
           const isOccupied = !!order
+          const tableService = serviceRequests.find((r) => r.tableNumber === tableNum)
+          const hasServiceAlert = !!tableService
           const elapsedMinutes = order
             ? Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 60000)
             : 0
@@ -287,12 +409,30 @@ export default function TableManager({ onSelectTableForPOS }: TableManagerProps)
                 }
               }}
               className={`cursor-pointer transition-all duration-300 relative glass-card group ${
-                isOccupied
+                hasServiceAlert
+                  ? 'border-amber-500 ring-2 ring-amber-400/60 shadow-lg shadow-amber-500/20'
+                  : isOccupied
                   ? 'border-blue-500/40 shadow-blue-500/10'
                   : 'hover:border-emerald-500/40'
               }`}
             >
               <CardHeader className="p-4 pb-2">
+                {hasServiceAlert && (
+                  <div className="mb-2 p-1.5 rounded-lg bg-amber-500 text-white text-[10px] font-black flex items-center justify-between shadow-xs">
+                    <div className="flex items-center gap-1">
+                      <Bell className="w-3 h-3 animate-bounce" />
+                      <span>{tableService.type === 'request_bill' ? 'BILL REQUESTED' : 'WAITER CALL'}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => handleDismissService(tableNum, e)}
+                      className="p-0.5 hover:bg-white/20 rounded transition-colors cursor-pointer"
+                      title="Dismiss Alert"
+                    >
+                      <CheckCheck className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-1.5">
                     <Armchair className={`w-4 h-4 ${isOccupied ? 'text-blue-500' : 'text-slate-400'}`} />
@@ -308,6 +448,17 @@ export default function TableManager({ onSelectTableForPOS }: TableManagerProps)
                     >
                       {isOccupied ? 'Occupied' : 'Open'}
                     </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedTableForTent(table)
+                      }}
+                      className="p-1 text-slate-400 hover:text-emerald-500 rounded cursor-pointer transition-colors"
+                      title="View & Print Table QR Stand"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                    </button>
                     {canManageTables && !isOccupied && (
                       <button
                         onClick={(e) => handleDeleteTable(table, e)}
@@ -477,6 +628,13 @@ export default function TableManager({ onSelectTableForPOS }: TableManagerProps)
         isOpen={isReceiptOpen}
         onClose={() => setIsReceiptOpen(false)}
         receipt={receiptData}
+      />
+
+      {/* Table QR Stand / Tent Modal */}
+      <TableTentModal
+        isOpen={!!selectedTableForTent}
+        onClose={() => setSelectedTableForTent(null)}
+        table={selectedTableForTent}
       />
     </div>
   )

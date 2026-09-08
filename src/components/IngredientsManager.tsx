@@ -18,7 +18,12 @@ import {
   Sparkles, 
   PlusCircle,
   Scale,
-  CheckCircle2
+  CheckCircle2,
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  Percent,
+  Award
 } from 'lucide-react'
 
 interface Ingredient {
@@ -195,6 +200,25 @@ export default function IngredientsManager() {
     return recipes.filter(r => r.menuItemId === menuItemId)
   }
 
+  const getIngredientUnitCost = (name: string, unit: string): number => {
+    const lower = name.toLowerCase()
+    if (lower.includes('bean') || lower.includes('espresso') || lower.includes('coffee')) return 0.028
+    if (lower.includes('oat') && lower.includes('milk')) return 0.0045
+    if (lower.includes('milk')) return 0.0025
+    if (lower.includes('syrup')) return 0.015
+    if (lower.includes('matcha')) return 0.08
+    if (lower.includes('chocolate') || lower.includes('cocoa')) return 0.02
+    if (lower.includes('tea')) return 0.04
+    if (lower.includes('sugar')) return 0.001
+    if (lower.includes('dough') || lower.includes('croissant')) return 0.85
+    if (lower.includes('butter')) return 0.012
+    if (lower.includes('egg')) return 0.25
+    if (lower.includes('flour')) return 0.0015
+    if (unit === 'g') return 0.02
+    if (unit === 'ml') return 0.003
+    return 0.10
+  }
+
   if (loading) {
     return <div className="p-6 text-sm text-slate-500">Loading ingredients and recipes...</div>
   }
@@ -202,14 +226,18 @@ export default function IngredientsManager() {
   return (
     <div className="p-6 space-y-6">
       <Tabs defaultValue="recipes" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 mb-6 max-w-md mx-auto">
+        <TabsList className="grid w-full grid-cols-3 mb-6 max-w-xl mx-auto">
           <TabsTrigger value="recipes" className="gap-2 font-bold text-xs">
             <ChefHat className="w-4 h-4" />
             <span>Recipe Builder</span>
           </TabsTrigger>
           <TabsTrigger value="ingredients" className="gap-2 font-bold text-xs">
             <FlaskConical className="w-4 h-4" />
-            <span>Raw Ingredients Stock</span>
+            <span>Raw Ingredients</span>
+          </TabsTrigger>
+          <TabsTrigger value="costing" className="gap-2 font-bold text-xs">
+            <TrendingUp className="w-4 h-4 text-emerald-500" />
+            <span>Costing & Margins</span>
           </TabsTrigger>
         </TabsList>
 
@@ -413,6 +441,207 @@ export default function IngredientsManager() {
               </Card>
             ))}
           </div>
+        </TabsContent>
+
+        {/* Menu Costing & Profit Margins Tab */}
+        <TabsContent value="costing" className="space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-950 dark:from-white dark:via-blue-100 dark:to-slate-300 bg-clip-text text-transparent">
+                Menu Engineering & Recipe Margins
+              </h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Calculated Bill of Materials (COGS), gross margins, and food cost profitability metrics
+              </p>
+            </div>
+          </div>
+
+          {/* Metric Summary Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <Card className="glass-card">
+              <CardHeader className="pb-1 pt-4 px-4">
+                <CardTitle className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Menu Items with Recipes
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <p className="text-2xl font-black text-slate-900 dark:text-white">
+                  {menuItems.filter(m => getMenuItemRecipes(m.id).length > 0).length} / {menuItems.length}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Recipes engineered</p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card">
+              <CardHeader className="pb-1 pt-4 px-4">
+                <CardTitle className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+                  High-Margin Stars
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                  {menuItems.filter(m => {
+                    const rList = getMenuItemRecipes(m.id)
+                    if (rList.length === 0) return false
+                    const cogs = rList.reduce((sum, r) => sum + (r.quantity * getIngredientUnitCost(r.ingredient.name, r.ingredient.unit)), 0)
+                    const margin = m.price > 0 ? ((m.price - cogs) / m.price) * 100 : 0
+                    return margin >= 70
+                  }).length}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">&ge; 70% gross profit margin</p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card">
+              <CardHeader className="pb-1 pt-4 px-4">
+                <CardTitle className="text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                  Average Food Cost
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <p className="text-2xl font-black text-blue-600 dark:text-blue-400">
+                  {(() => {
+                    const engineered = menuItems.filter(m => getMenuItemRecipes(m.id).length > 0 && m.price > 0)
+                    if (engineered.length === 0) return '0%'
+                    const totalRatio = engineered.reduce((sum, m) => {
+                      const rList = getMenuItemRecipes(m.id)
+                      const cogs = rList.reduce((s, r) => s + (r.quantity * getIngredientUnitCost(r.ingredient.name, r.ingredient.unit)), 0)
+                      return sum + ((cogs / m.price) * 100)
+                    }, 0)
+                    return `${(totalRatio / engineered.length).toFixed(1)}%`
+                  })()}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Industry benchmark: 25%–35%</p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card">
+              <CardHeader className="pb-1 pt-4 px-4">
+                <CardTitle className="text-[11px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
+                  Review Price Alerts
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <p className="text-2xl font-black text-rose-600 dark:text-rose-400">
+                  {menuItems.filter(m => {
+                    const rList = getMenuItemRecipes(m.id)
+                    if (rList.length === 0) return false
+                    const cogs = rList.reduce((sum, r) => sum + (r.quantity * getIngredientUnitCost(r.ingredient.name, r.ingredient.unit)), 0)
+                    const foodCostRatio = m.price > 0 ? (cogs / m.price) * 100 : 0
+                    return foodCostRatio > 35
+                  }).length}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Food cost &gt; 35% of price</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Menu Costing Table */}
+          <Card className="glass-card">
+            <CardHeader className="pb-2 border-b border-slate-200/60 dark:border-white/[0.08]">
+              <CardTitle className="text-base font-bold flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Award className="w-5 h-5 text-amber-500" />
+                  <span>Item Profitability & Food Cost Breakdown</span>
+                </span>
+                <span className="text-xs font-normal text-slate-400">
+                  Estimates based on recipe bill of materials
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 dark:bg-slate-800/60 uppercase font-semibold text-slate-500 dark:text-slate-400 border-b border-slate-200/60 dark:border-white/[0.06]">
+                    <tr>
+                      <th className="px-4 py-3">Menu Item</th>
+                      <th className="px-4 py-3">Recipe Formulation</th>
+                      <th className="px-4 py-3 text-right">Selling Price</th>
+                      <th className="px-4 py-3 text-right">Recipe Cost (COGS)</th>
+                      <th className="px-4 py-3 text-right">Gross Profit</th>
+                      <th className="px-4 py-3 text-center">Food Cost %</th>
+                      <th className="px-4 py-3 text-center">Profit Rating</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200/50 dark:divide-white/[0.05]">
+                    {menuItems.map((item) => {
+                      const itemRecipes = getMenuItemRecipes(item.id)
+                      const hasRecipe = itemRecipes.length > 0
+                      const cogs = itemRecipes.reduce((sum, r) => sum + (r.quantity * getIngredientUnitCost(r.ingredient.name, r.ingredient.unit)), 0)
+                      const grossProfit = Math.max(0, item.price - cogs)
+                      const foodCostRatio = item.price > 0 && hasRecipe ? Math.round((cogs / item.price) * 1000) / 10 : 0
+                      const grossMarginRatio = item.price > 0 && hasRecipe ? Math.round(((item.price - cogs) / item.price) * 1000) / 10 : 0
+
+                      let ratingBadge = (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                          Unformulated
+                        </span>
+                      )
+                      if (hasRecipe) {
+                        if (grossMarginRatio >= 70) {
+                          ratingBadge = (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:bg-emerald-400/20 dark:text-emerald-300">
+                              ★ High Profit Star
+                            </span>
+                          )
+                        } else if (grossMarginRatio >= 50) {
+                          ratingBadge = (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/15 text-blue-600 dark:bg-blue-400/20 dark:text-blue-300">
+                              ✓ Healthy Margin
+                            </span>
+                          )
+                        } else {
+                          ratingBadge = (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-600 dark:bg-rose-400/20 dark:text-rose-300">
+                              ⚠️ Review Price
+                            </span>
+                          )
+                        }
+                      }
+
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                          <td className="px-4 py-3.5">
+                            <span className="font-bold text-slate-800 dark:text-slate-200 block text-sm">
+                              {item.name}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-500 max-w-[200px] truncate">
+                            {hasRecipe ? (
+                              itemRecipes.map(r => `${r.quantity}${r.ingredient.unit} ${r.ingredient.name}`).join(', ')
+                            ) : (
+                              <span className="italic text-slate-400">No ingredients linked</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
+                            ${item.price.toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3.5 text-right font-mono text-slate-500">
+                            {hasRecipe ? `$${cogs.toFixed(2)}` : '—'}
+                          </td>
+                          <td className="px-4 py-3.5 text-right font-mono font-extrabold text-emerald-600 dark:text-emerald-400">
+                            {hasRecipe ? `+$${grossProfit.toFixed(2)}` : '—'}
+                          </td>
+                          <td className="px-4 py-3.5 text-center">
+                            {hasRecipe ? (
+                              <span className={`font-mono font-bold ${
+                                foodCostRatio <= 30 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                              }`}>
+                                {foodCostRatio.toFixed(1)}%
+                              </span>
+                            ) : '—'}
+                          </td>
+                          <td className="px-4 py-3.5 text-center">
+                            {ratingBadge}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

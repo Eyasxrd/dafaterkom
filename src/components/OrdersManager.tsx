@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import ReceiptModal, { ReceiptData } from '@/components/ReceiptModal'
+import RefundModal from '@/components/RefundModal'
 import { 
   Printer, 
   Flame, 
@@ -62,6 +63,7 @@ export default function OrdersManager() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(null)
   const [isReceiptOpen, setIsReceiptOpen] = useState(false)
+  const [refundingOrder, setRefundingOrder] = useState<Order | null>(null)
 
   useEffect(() => {
     fetchOrders()
@@ -129,6 +131,7 @@ export default function OrdersManager() {
       case 'preparing': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100'
       case 'ready': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100'
       case 'completed': return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+      case 'refunded': return 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800'
       case 'cancelled': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100'
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
     }
@@ -155,6 +158,7 @@ export default function OrdersManager() {
             <SelectItem value="preparing">Preparing</SelectItem>
             <SelectItem value="ready">Ready</SelectItem>
             <SelectItem value="completed">Completed</SelectItem>
+            <SelectItem value="refunded">Refunded</SelectItem>
             <SelectItem value="cancelled">Cancelled</SelectItem>
           </SelectContent>
         </Select>
@@ -292,6 +296,17 @@ export default function OrdersManager() {
                       <span>Complete</span>
                     </Button>
                   )}
+                  {order.orderStatus === 'completed' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-rose-300 text-rose-600 hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-400 gap-1.5 font-bold"
+                      onClick={() => setRefundingOrder(order)}
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Refund / Return</span>
+                    </Button>
+                  )}
                   {(order.orderStatus === 'pending' || order.orderStatus === 'preparing') && (
                     <Button
                       size="sm"
@@ -315,6 +330,14 @@ export default function OrdersManager() {
         isOpen={isReceiptOpen}
         onClose={() => setIsReceiptOpen(false)}
         receipt={selectedReceipt}
+      />
+
+      {/* Refund & Return Restitution Modal */}
+      <RefundModal
+        isOpen={!!refundingOrder}
+        onClose={() => setRefundingOrder(null)}
+        order={refundingOrder}
+        onRefundCompleted={fetchOrders}
       />
     </div>
   )

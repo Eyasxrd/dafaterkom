@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { initializeElectronDatabase } from '@/lib/db';
+import { prisma } from '@/lib/db';
 
 export async function POST() {
   try {
-    await initializeElectronDatabase();
-    return NextResponse.json({ success: true, message: 'Electron database initialized' });
+    await prisma.$queryRaw`SELECT 1`;
+    return NextResponse.json({ success: true, message: 'Database connected successfully' });
   } catch (error) {
-    console.error('Failed to initialize Electron database:', error);
-    return NextResponse.json({ success: false, error: 'Failed to initialize database' }, { status: 500 });
+    console.error('Database connection check failed:', error);
+    return NextResponse.json({ success: false, error: 'Database connection failed' }, { status: 500 });
   }
 }

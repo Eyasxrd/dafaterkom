@@ -1,19 +1,15 @@
 'use client';
 
 import { useEffect } from 'react';
-import { initializeElectronDatabase } from '@/lib/db';
 
 export default function ElectronInitializer() {
   useEffect(() => {
     const initElectron = async () => {
-      // Check if we're in Electron environment
       if (typeof window !== 'undefined' && (window as any).electron) {
         try {
-          console.log('Initializing Electron database...');
-          await initializeElectronDatabase();
-          console.log('Electron database initialized successfully');
+          await fetch('/api/init-electron', { method: 'POST' });
         } catch (error) {
-          console.error('Failed to initialize Electron database:', error);
+          console.error('Failed to notify Electron database status:', error);
         }
       }
     };
@@ -21,5 +17,5 @@ export default function ElectronInitializer() {
     initElectron();
   }, []);
 
-  return null; // This component doesn't render anything
+  return null;
 }

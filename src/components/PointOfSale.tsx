@@ -10,7 +10,9 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAuthStore } from '@/lib/store'
 import ReceiptModal, { ReceiptData } from '@/components/ReceiptModal'
+import KitchenTicketModal, { KitchenTicketData } from '@/components/KitchenTicketModal'
 import AppleWalletButton from '@/components/loyalty/AppleWalletButton'
+import SplitBillModal from '@/components/SplitBillModal'
 import { offlineStore } from '@/lib/sync/offline-store'
 import { syncEngine } from '@/lib/sync/sync-engine'
 import { 
@@ -29,7 +31,12 @@ import {
   UserPlus, 
   ArrowRight,
   Coffee,
-  WifiOff
+  WifiOff,
+  Divide,
+  ChefHat,
+  Tag,
+  Gift,
+  Printer
 } from 'lucide-react'
 
 interface MenuItem {
@@ -41,10 +48,16 @@ interface MenuItem {
   category: { name: string }
   imageUrl?: string
   isAvailable: boolean
+  inventory?: {
+    quantity: number
+    lowStockThreshold: number
+  } | null
   recipes?: {
     ingredient: {
       name: string
       unit: string
+      quantity: number
+      lowStockThreshold?: number
     }
     quantity: number
   }[]
@@ -108,8 +121,22 @@ export default function PointOfSale() {
 
   // Checkout & Receipt state
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
+  const [isSplitBillOpen, setIsSplitBillOpen] = useState(false)
   const [isReceiptOpen, setIsReceiptOpen] = useState(false)
   const [lastReceipt, setLastReceipt] = useState<ReceiptData | null>(null)
+
+  // Loyalty redemption state
+  const [redeemedPoints, setRedeemedPoints] = useState<number>(0)
+
+  // Promo Coupon state
+  const [promoInput, setPromoInput] = useState<string>('')
+  const [appliedPromo, setAppliedPromo] = useState<string | null>(null)
+  const [promoError, setPromoError] = useState<string | null>(null)
+
+  // KOT Ticket state
+  const [isKotOpen, setIsKotOpen] = useState(false)
+  const [kotTicketData, setKotTicketData] = useState<KitchenTicketData | null>(null)
+
   const [orderDetails, setOrderDetails] = useState({
     staffId: user?.id || '',
     paymentMethod: 'cash',
@@ -325,13 +352,47 @@ export default function PointOfSale() {
 
   // Financial Calculations
   const rawSubtotal = cart.reduce((sum, item) => sum + item.subtotal, 0)
+
+  // Promo code discount
+  let promoDiscount = 0
+  if (appliedPromo) {
+    if (appliedPromo === 'WELCOME10') promoDiscount = Math.round((rawSubtotal * 0.10) * 100) / 100
+    else if (appliedPromo === 'SUMMER20') promoDiscount = Math.round((rawSubtotal * 0.20) * 100) / 100
+    else if (appliedPromo === 'VIP15') promoDiscount = Math.round((rawSubtotal * 0.15) * 100) / 100
+    else if (appliedPromo === 'HAPPYHOUR') promoDiscount = Math.round((rawSubtotal * 0.25) * 100) / 100
+    else if (appliedPromo === 'COFFEE5') promoDiscount = Math.min(5.00, rawSubtotal)
+  }
+
+  // Loyalty points discount ($1 off per 100 points)
+  const pointsDiscount = Math.min(Math.max(0, rawSubtotal - promoDiscount), (redeemedPoints / 100) * 1.00)
+
   const discountNumber = parseFloat(discountValue) || 0
-  const discountAmount = discountType === 'percent'
+  const manualDiscount = discountType === 'percent'
     ? (rawSubtotal * Math.min(100, Math.max(0, discountNumber))) / 100
     : Math.min(rawSubtotal, Math.max(0, discountNumber))
-  const netSubtotal = Math.max(0, rawSubtotal - discountAmount)
-  const taxAmount = (netSubtotal * taxRate) / 100
-  const grandTotal = netSubtotal + taxAmount
+
+  const totalDiscount = Math.min(rawSubtotal, Math.round((manualDiscount + promoDiscount + pointsDiscount) * 100) / 100)
+  const netSubtotal = Math.max(0, rawSubtotal - totalDiscount)
+  const taxAmount = Math.round(((netSubtotal * taxRate) / 100) * 100) / 100
+  const grandTotal = Math.round((netSubtotal + taxAmount) * 100) / 100
+
+  const handleApplyPromo = () => {
+    setPromoError(null)
+    const code = promoInput.trim().toUpperCase()
+    if (!code) return
+    const validCodes = ['WELCOME10', 'SUMMER20', 'VIP15', 'HAPPYHOUR', 'COFFEE5']
+    if (validCodes.includes(code)) {
+      setAppliedPromo(code)
+      setPromoInput('')
+    } else {
+      setPromoError('Invalid code. Try WELCOME10, SUMMER20, VIP15, or COFFEE5')
+    }
+  }
+
+  const handleRemovePromo = () => {
+    setAppliedPromo(null)
+    setPromoError(null)
+  }
 
   const handleCreateCustomer = async () => {
     if (!newCustomer.name.trim()) return
@@ -363,13 +424,15 @@ export default function PointOfSale() {
       staffId: activeStaffId,
       subtotal: rawSubtotal,
       tax: taxAmount,
-      discount: discountAmount,
+      discount: totalDiscount,
       totalAmount: grandTotal,
       paymentMethod: orderDetails.paymentMethod,
       tableNumber: orderDetails.tableNumber ? parseInt(orderDetails.tableNumber) : null,
       customerName: selectedCustomer?.name || orderDetails.customerName || null,
       customerId: selectedCustomer?.id || null,
       notes: orderDetails.notes,
+      redeemedPoints: redeemedPoints > 0 ? redeemedPoints : undefined,
+      promoCode: appliedPromo || undefined,
       items: cart.map(item => ({
         menuItemId: item.menuItem.id,
         quantity: item.quantity,
@@ -386,9 +449,9 @@ export default function PointOfSale() {
       tableNumber: orderDetails.tableNumber ? parseInt(orderDetails.tableNumber) : null,
       customerName: selectedCustomer?.name || orderDetails.customerName || null,
       customerId: selectedCustomer?.id || null,
-      customerLoyaltyPoints: selectedCustomer ? (selectedCustomer.loyaltyPoints + Math.max(1, Math.floor(grandTotal))) : null,
+      customerLoyaltyPoints: selectedCustomer ? (selectedCustomer.loyaltyPoints - redeemedPoints + Math.max(1, Math.floor(grandTotal))) : null,
       subtotal: rawSubtotal,
-      discount: discountAmount,
+      discount: totalDiscount,
       tax: taxAmount,
       taxRate: taxRate,
       totalAmount: grandTotal,
@@ -406,6 +469,24 @@ export default function PointOfSale() {
         notes: item.modifiersSummary || null
       }))
     }
+
+    // Prepare KOT Ticket Data
+    const kotData: KitchenTicketData = {
+      orderNumber,
+      createdAt: new Date(),
+      tableNumber: orderDetails.tableNumber ? parseInt(orderDetails.tableNumber) : null,
+      customerName: selectedCustomer?.name || orderDetails.customerName || null,
+      staffName: staffObj?.name || user?.name || 'Cashier',
+      station: 'BARISTA & KITCHEN',
+      notes: orderDetails.notes,
+      items: cart.map(i => ({
+        name: i.menuItem.name,
+        quantity: i.quantity,
+        notes: i.modifiersSummary || null,
+        category: i.menuItem.category?.name
+      }))
+    }
+    setKotTicketData(kotData)
 
     try {
       const response = await fetch('/api/orders', {
@@ -445,6 +526,9 @@ export default function PointOfSale() {
     setCart([])
     setIsCheckoutOpen(false)
     setDiscountValue('0')
+    setRedeemedPoints(0)
+    setAppliedPromo(null)
+    setPromoInput('')
     setSelectedCustomer(null)
     setCustomerSearch('')
     setOrderDetails({
@@ -521,55 +605,96 @@ export default function PointOfSale() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Menu Items Grid */}
         <div className="lg:col-span-2 grid gap-4 md:grid-cols-2">
-          {filteredMenuItems.map((item) => (
-            <Card key={item.id} className="glass-card flex flex-col justify-between">
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-start gap-2">
-                  <CardTitle className="text-base font-bold text-slate-900 dark:text-white leading-tight">{item.name}</CardTitle>
-                  <span className="text-sm font-extrabold px-2.5 py-1 rounded-xl bg-blue-500/10 text-blue-600 dark:bg-blue-400/15 dark:text-blue-300 shrink-0">
-                    ${item.price.toFixed(2)}
-                  </span>
-                </div>
-                <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{item.category.name}</p>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2 leading-relaxed">{item.description}</p>
-                
-                {item.recipes && item.recipes.length > 0 && (
-                  <div className="p-2 rounded-xl bg-slate-100/60 dark:bg-white/[0.04] border border-slate-200/50 dark:border-white/[0.05] text-[11px] text-slate-600 dark:text-slate-400">
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">Ingredients: </span>
-                    {item.recipes.map((r, i) => (
-                      <span key={i}>
-                        {r.ingredient.name} ({r.quantity} {r.ingredient.unit})
-                        {i < item.recipes!.length - 1 ? ', ' : ''}
-                      </span>
-                    ))}
-                  </div>
-                )}
+          {filteredMenuItems.map((item) => {
+            const directStock = item.inventory ? item.inventory.quantity : null
+            const isDirectOut = directStock !== null && directStock <= 0
+            const isDirectLow = directStock !== null && directStock > 0 && directStock <= (item.inventory?.lowStockThreshold ?? 5)
 
-                <div className="flex gap-2 pt-2 border-t border-slate-200/60 dark:border-white/[0.08]">
-                  <Button
-                    onClick={() => addToCart(item)}
-                    className="flex-1 liquid-btn-primary gap-1.5 font-bold"
-                    size="sm"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>{t('addToOrder')}</span>
-                  </Button>
-                  <Button
-                    onClick={() => openCustomizer(item)}
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
-                    title="Customize sizes, milk, sugar & add-ons"
-                  >
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                    <span>{t('customize')}</span>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+            const depletedIngredient = item.recipes?.find(r => r.ingredient.quantity <= 0)
+            const lowIngredient = !depletedIngredient 
+              ? item.recipes?.find(r => r.ingredient.quantity <= (r.ingredient.lowStockThreshold ?? 5))
+              : null
+
+            const isUnavailable = isDirectOut || !!depletedIngredient
+
+            return (
+              <Card key={item.id} className={`glass-card flex flex-col justify-between ${isUnavailable ? 'opacity-75 border-rose-200 dark:border-rose-900/40' : ''}`}>
+                <CardHeader className="pb-2">
+                  <div className="flex justify-between items-start gap-2">
+                    <CardTitle className="text-base font-bold text-slate-900 dark:text-white leading-tight">{item.name}</CardTitle>
+                    <span className="text-sm font-extrabold px-2.5 py-1 rounded-xl bg-blue-500/10 text-blue-600 dark:bg-blue-400/15 dark:text-blue-300 shrink-0">
+                      ${item.price.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                    <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{item.category.name}</p>
+                    {isDirectOut && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400">
+                        Out of Stock
+                      </span>
+                    )}
+                    {depletedIngredient && !isDirectOut && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400">
+                        ⚠️ {depletedIngredient.ingredient.name} Empty
+                      </span>
+                    )}
+                    {isDirectLow && !isDirectOut && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                        Only {directStock} left
+                      </span>
+                    )}
+                    {lowIngredient && !isUnavailable && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                        Low {lowIngredient.ingredient.name}
+                      </span>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2 leading-relaxed">{item.description}</p>
+                  
+                  {item.recipes && item.recipes.length > 0 && (
+                    <div className="p-2 rounded-xl bg-slate-100/60 dark:bg-white/[0.04] border border-slate-200/50 dark:border-white/[0.05] text-[11px] text-slate-600 dark:text-slate-400">
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">Ingredients: </span>
+                      {item.recipes.map((r, i) => (
+                        <span key={i} className={r.ingredient.quantity <= 0 ? 'text-rose-500 font-bold' : ''}>
+                          {r.ingredient.name} ({r.quantity} {r.ingredient.unit})
+                          {i < item.recipes!.length - 1 ? ', ' : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-2 border-t border-slate-200/60 dark:border-white/[0.08]">
+                    <Button
+                      onClick={() => addToCart(item)}
+                      disabled={isUnavailable}
+                      className={`flex-1 gap-1.5 font-bold ${
+                        isUnavailable 
+                          ? 'opacity-50 cursor-not-allowed bg-slate-200 dark:bg-slate-800 text-slate-400' 
+                          : 'liquid-btn-primary'
+                      }`}
+                      size="sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>{isUnavailable ? 'Depleted' : t('addToOrder')}</span>
+                    </Button>
+                    <Button
+                      onClick={() => openCustomizer(item)}
+                      disabled={isUnavailable}
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      title="Customize sizes, milk, sugar & add-ons"
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                      <span>{t('customize')}</span>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
 
         {/* Current Order Cart Sidebar */}
@@ -682,10 +807,10 @@ export default function PointOfSale() {
                       <span>{t('subtotal')}:</span>
                       <span>${rawSubtotal.toFixed(2)}</span>
                     </div>
-                    {discountAmount > 0 && (
+                    {totalDiscount > 0 && (
                       <div className="flex justify-between text-green-600 dark:text-green-400">
                         <span>{t('discount')}:</span>
-                        <span>-${discountAmount.toFixed(2)}</span>
+                        <span>-${totalDiscount.toFixed(2)}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-gray-600 dark:text-gray-400">
@@ -915,6 +1040,68 @@ export default function PointOfSale() {
               )}
 
               {selectedCustomer && (
+                <div className="mt-2 p-2 bg-blue-50/60 dark:bg-blue-950/40 rounded-lg border border-blue-100 dark:border-blue-900/50 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-blue-900 dark:text-blue-300 flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                      Redeem Points
+                    </span>
+                    <span className="text-[11px] text-blue-700 dark:text-blue-400 font-bold">
+                      {selectedCustomer.loyaltyPoints} pts (${(selectedCustomer.loyaltyPoints / 100).toFixed(2)})
+                    </span>
+                  </div>
+                  {selectedCustomer.loyaltyPoints >= 100 ? (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      {[100, 200, 500].filter(pts => pts <= selectedCustomer.loyaltyPoints).map(pts => (
+                        <button
+                          key={pts}
+                          type="button"
+                          onClick={() => setRedeemedPoints(redeemedPoints === pts ? 0 : pts)}
+                          className={`px-2 py-0.5 text-[11px] font-semibold rounded border transition-colors ${
+                            redeemedPoints === pts
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'bg-white dark:bg-gray-800 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 hover:bg-blue-100/50'
+                          }`}
+                        >
+                          {pts} pts (-${(pts / 100).toFixed(2)})
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const maxPts = Math.min(
+                            Math.floor(selectedCustomer.loyaltyPoints / 100) * 100,
+                            Math.floor(rawSubtotal) * 100
+                          )
+                          setRedeemedPoints(redeemedPoints === maxPts ? 0 : maxPts)
+                        }}
+                        className={`px-2 py-0.5 text-[11px] font-semibold rounded border transition-colors ${
+                          redeemedPoints > 500 || (redeemedPoints > 0 && redeemedPoints === Math.min(Math.floor(selectedCustomer.loyaltyPoints / 100) * 100, Math.floor(rawSubtotal) * 100))
+                            ? 'bg-amber-600 text-white border-amber-600'
+                            : 'bg-white dark:bg-gray-800 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800 hover:bg-amber-100/50'
+                        }`}
+                      >
+                        Max ({Math.min(Math.floor(selectedCustomer.loyaltyPoints / 100) * 100, Math.floor(rawSubtotal) * 100)} pts)
+                      </button>
+                      {redeemedPoints > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setRedeemedPoints(0)}
+                          className="text-[10px] text-red-500 hover:underline ml-1"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                      Minimum 100 points required to redeem.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {selectedCustomer && (
                 <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1.5 pt-1">
                   <Sparkles className="w-3.5 h-3.5 shrink-0" />
                   <span>This customer will earn +{Math.max(1, Math.floor(grandTotal))} loyalty points on this order!</span>
@@ -975,6 +1162,56 @@ export default function PointOfSale() {
               </Select>
             </div>
 
+            {/* Promo Voucher / Coupon Code */}
+            <div>
+              <Label className="text-xs font-semibold flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-purple-600" />
+                Promo Code / Voucher
+              </Label>
+              {appliedPromo ? (
+                <div className="mt-1 flex items-center justify-between p-2 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-md">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-purple-600 text-white font-mono text-xs px-2 py-0.5 rounded font-bold">{appliedPromo}</span>
+                    <span className="text-xs text-purple-800 dark:text-purple-300 font-medium">
+                      Applied (-${promoDiscount.toFixed(2)})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemovePromo}
+                    className="text-[11px] text-red-500 hover:underline font-medium"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-1 mt-1">
+                  <div className="flex gap-1.5">
+                    <Input
+                      placeholder="e.g. WELCOME10, SUMMER20, VIP15, COFFEE5"
+                      value={promoInput}
+                      onChange={(e) => {
+                        setPromoInput(e.target.value.toUpperCase())
+                        if (promoError) setPromoError(null)
+                      }}
+                      className="text-xs font-mono h-9 uppercase"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleApplyPromo}
+                      className="h-9 px-3 text-xs font-bold shrink-0 border-purple-200 text-purple-700 dark:text-purple-300 hover:bg-purple-50"
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                  {promoError && (
+                    <p className="text-[10px] text-red-500 font-medium">{promoError}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Table Number */}
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -1015,10 +1252,22 @@ export default function PointOfSale() {
                 <span>Subtotal:</span>
                 <span>${rawSubtotal.toFixed(2)}</span>
               </div>
-              {discountAmount > 0 && (
+              {manualDiscount > 0 && (
                 <div className="flex justify-between text-xs text-green-600">
-                  <span>Discount:</span>
-                  <span>-${discountAmount.toFixed(2)}</span>
+                  <span>Cart Discount:</span>
+                  <span>-${manualDiscount.toFixed(2)}</span>
+                </div>
+              )}
+              {promoDiscount > 0 && (
+                <div className="flex justify-between text-xs text-purple-600 dark:text-purple-400">
+                  <span>Promo Discount ({appliedPromo}):</span>
+                  <span>-${promoDiscount.toFixed(2)}</span>
+                </div>
+              )}
+              {pointsDiscount > 0 && (
+                <div className="flex justify-between text-xs text-blue-600 dark:text-blue-400">
+                  <span>Points Redeemed ({redeemedPoints} pts):</span>
+                  <span>-${pointsDiscount.toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between text-xs text-gray-500">
@@ -1030,16 +1279,43 @@ export default function PointOfSale() {
                 <span className="text-blue-600 dark:text-blue-400">${grandTotal.toFixed(2)}</span>
               </div>
 
-              <Button
-                onClick={handleCheckout}
-                className="w-full bg-green-600 hover:bg-green-700 h-11 text-base font-bold"
-              >
-                {t('completeOrder')} • ${grandTotal.toFixed(2)}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsSplitBillOpen(true)}
+                  className="flex-1 border-blue-200 dark:border-blue-900/40 text-blue-600 dark:text-blue-400 font-semibold gap-1.5 h-11 text-xs"
+                >
+                  <Divide className="w-4 h-4" />
+                  <span>Split Bill</span>
+                </Button>
+                <Button
+                  onClick={handleCheckout}
+                  className="flex-[2] bg-green-600 hover:bg-green-700 h-11 text-base font-bold"
+                >
+                  {t('completeOrder')} • ${grandTotal.toFixed(2)}
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Split Bill & Multi-Tender Modal */}
+      <SplitBillModal
+        isOpen={isSplitBillOpen}
+        onClose={() => setIsSplitBillOpen(false)}
+        totalAmount={grandTotal}
+        onCompleteSplit={(splits) => {
+          const summary = splits.map((s, i) => `Guest ${i + 1}: $${s.amount.toFixed(2)} (${s.method})`).join(', ')
+          setOrderDetails(prev => ({
+            ...prev,
+            paymentMethod: 'split',
+            notes: prev.notes ? `${prev.notes} | Split: ${summary}` : `Split: ${summary}`
+          }))
+          handleCheckout()
+        }}
+      />
 
       {/* Quick Add Customer Modal */}
       <Dialog open={isNewCustomerModalOpen} onOpenChange={setIsNewCustomerModalOpen}>
@@ -1092,6 +1368,14 @@ export default function PointOfSale() {
         isOpen={isReceiptOpen}
         onClose={() => setIsReceiptOpen(false)}
         receipt={lastReceipt}
+        onPrintKot={() => setIsKotOpen(true)}
+      />
+
+      {/* Kitchen & Barista Order Ticket (KOT) Modal */}
+      <KitchenTicketModal
+        isOpen={isKotOpen}
+        onClose={() => setIsKotOpen(false)}
+        ticket={kotTicketData}
       />
     </div>
   )

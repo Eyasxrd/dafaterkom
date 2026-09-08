@@ -17,7 +17,11 @@ import {
   RotateCcw,
   Sparkles,
   Layers,
-  ArrowUpRight
+  ArrowUpRight,
+  Trash2,
+  Clock,
+  TrendingDown,
+  ShieldAlert
 } from 'lucide-react'
 
 interface Category {
@@ -76,11 +80,79 @@ export default function InventoryManager({ onNavigateToImport }: InventoryManage
   const [restockAmount, setRestockAmount] = useState('25')
   const [actionError, setActionError] = useState<string | null>(null)
 
+  // Waste & Spoilage Modal state
+  const [wasteItem, setWasteItem] = useState<InventoryItem | null>(null)
+  const [wasteQuantity, setWasteQuantity] = useState('1')
+  const [wasteReason, setWasteReason] = useState('expired')
+  const [wasteNotes, setWasteNotes] = useState('')
+  const [wasteSubmitting, setWasteSubmitting] = useState(false)
+  const [wasteError, setWasteError] = useState<string | null>(null)
+
+  // Active Tab: 'inventory' | 'waste_log'
+  const [activeTab, setActiveTab] = useState<'inventory' | 'waste_log'>('inventory')
+  const [wasteLogs, setWasteLogs] = useState<any[]>([])
+  const [totalLossAmount, setTotalLossAmount] = useState(0)
+  const [totalItemsWasted, setTotalItemsWasted] = useState(0)
+  const [loadingWaste, setLoadingWaste] = useState(false)
+
   useEffect(() => {
     fetchInventory()
     fetchMenuItems()
     fetchCategories()
+    fetchWasteLogs()
   }, [])
+
+  const fetchWasteLogs = async () => {
+    setLoadingWaste(true)
+    try {
+      const response = await fetch('/api/inventory/waste')
+      const data = await response.json()
+      if (data.success) {
+        setWasteLogs(data.items || [])
+        setTotalLossAmount(data.totalLossAmount || 0)
+        setTotalItemsWasted(data.totalItemsWasted || 0)
+      }
+    } catch (error) {
+      console.error('Failed to fetch waste logs:', error)
+    } finally {
+      setLoadingWaste(false)
+    }
+  }
+
+  const handleRecordWaste = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!wasteItem) return
+    setWasteSubmitting(true)
+    setWasteError(null)
+
+    try {
+      const res = await fetch('/api/inventory/waste', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inventoryId: wasteItem.id,
+          quantity: wasteQuantity,
+          reason: wasteReason,
+          notes: wasteNotes
+        })
+      })
+
+      const data = await res.json()
+      if (res.ok) {
+        setWasteItem(null)
+        setWasteQuantity('1')
+        setWasteNotes('')
+        fetchInventory()
+        fetchWasteLogs()
+      } else {
+        setWasteError(data.error || 'Failed to record waste')
+      }
+    } catch (err: any) {
+      setWasteError(err.message || 'Failed to record waste')
+    } finally {
+      setWasteSubmitting(false)
+    }
+  }
 
   const fetchInventory = async () => {
     try {
@@ -274,8 +346,48 @@ export default function InventoryManager({ onNavigateToImport }: InventoryManage
         </div>
       </div>
 
-      {/* Stats Summary Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {/* View Tabs: Active Stock vs Wastage Log */}
+      <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl w-fit">
+        <button
+          type="button"
+          onClick={() => setActiveTab('inventory')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'inventory'
+              ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+              : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Package className="w-3.5 h-3.5 text-blue-500" />
+          <span>Active Stock ({inventory.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('waste_log')
+            fetchWasteLogs()
+          }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'waste_log'
+              ? 'bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm'
+              : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+          <span>Wastage & Spoilage Log</span>
+          {totalItemsWasted > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-500/15 text-rose-600 dark:text-rose-400 font-black">
+              ${totalLossAmount.toFixed(0)} loss
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Conditional View: Active Stock vs Waste Log */}
+      {activeTab === 'inventory' ? (
+        <div className="space-y-6">
+          {/* Stats Summary Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card className="glass-card">
           <CardHeader className="pb-1 pt-4 px-4">
             <CardTitle className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Total Products</CardTitle>
@@ -370,6 +482,21 @@ export default function InventoryManager({ onNavigateToImport }: InventoryManage
                   >
                     + Restock
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setWasteError(null)
+                      setWasteItem(item)
+                      setWasteQuantity('1')
+                      setWasteNotes('')
+                    }}
+                    className="h-7 px-2 text-xs font-semibold text-rose-600 dark:text-rose-400 border-rose-300 dark:border-rose-800/40 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg ml-1"
+                    title="Record Spoilage / Wastage"
+                  >
+                    <Trash2 className="w-3 h-3 mr-1" />
+                    <span>Waste</span>
+                  </Button>
                 </div>
               </div>
               <div className="flex justify-between text-[11px] text-slate-400 pt-1">
@@ -379,7 +506,130 @@ export default function InventoryManager({ onNavigateToImport }: InventoryManage
             </CardContent>
           </Card>
         ))}
-      </div>
+          </div>
+        </div>
+      ) : (
+        /* Wastage & Spoilage Log View */
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card className="glass-card border-rose-500/20">
+              <CardHeader className="pb-1 pt-4 px-4">
+                <CardTitle className="text-[11px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <TrendingDown className="w-3.5 h-3.5" />
+                  <span>Total Financial Loss</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <p className="text-2xl font-black text-rose-600 dark:text-rose-400">
+                  -${totalLossAmount.toFixed(2)}
+                </p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Direct cost of spoiled & discarded stock</p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card">
+              <CardHeader className="pb-1 pt-4 px-4">
+                <CardTitle className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Total Items Wasted
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <p className="text-2xl font-black text-slate-900 dark:text-white">
+                  {totalItemsWasted}
+                </p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Units written off from inventory</p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card">
+              <CardHeader className="pb-1 pt-4 px-4">
+                <CardTitle className="text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span>Logged Incidents</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <p className="text-2xl font-black text-blue-600 dark:text-blue-400">
+                  {wasteLogs.length}
+                </p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Audited waste events</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="glass-card">
+            <CardHeader className="flex flex-row justify-between items-center pb-2">
+              <CardTitle className="text-base font-bold">Wastage & Spoilage Audit Log</CardTitle>
+              <Button size="sm" variant="outline" onClick={fetchWasteLogs} className="h-8 text-xs font-semibold gap-1.5">
+                <RotateCcw className="w-3 h-3" />
+                <span>Refresh Log</span>
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {loadingWaste ? (
+                <p className="text-center py-8 text-xs text-slate-400">Loading waste records...</p>
+              ) : wasteLogs.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 space-y-2">
+                  <Trash2 className="w-10 h-10 mx-auto stroke-1 text-slate-300 dark:text-slate-600" />
+                  <p className="font-semibold text-sm">No food waste or spoilage records logged yet.</p>
+                  <p className="text-xs">When food is dropped, expired, or burnt, use the "Waste" button on any item card to log it.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100/50 dark:bg-white/[0.04] border-b border-slate-200/60 dark:border-white/[0.08] uppercase font-semibold text-slate-500">
+                      <tr>
+                        <th className="p-3">Item Name</th>
+                        <th className="p-3">Reason</th>
+                        <th className="p-3 text-right">Quantity</th>
+                        <th className="p-3 text-right">Financial Loss</th>
+                        <th className="p-3">Date & Time</th>
+                        <th className="p-3">Details / Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200/50 dark:divide-white/[0.05]">
+                      {wasteLogs.map((log) => {
+                        const reasonLabels: Record<string, { label: string; color: string }> = {
+                          expired: { label: 'Expired', color: 'bg-amber-500/15 text-amber-600 dark:text-amber-300' },
+                          spilled_damaged: { label: 'Spilled / Dropped', color: 'bg-rose-500/15 text-rose-600 dark:text-rose-300' },
+                          burnt_prep_error: { label: 'Burnt / Mistake', color: 'bg-orange-500/15 text-orange-600 dark:text-orange-300' },
+                          quality_rejection: { label: 'Quality Issue', color: 'bg-purple-500/15 text-purple-600 dark:text-purple-300' },
+                          theft_loss: { label: 'Shrinkage / Loss', color: 'bg-slate-500/15 text-slate-600 dark:text-slate-300' },
+                          other: { label: 'Other', color: 'bg-slate-500/15 text-slate-600 dark:text-slate-300' }
+                        }
+                        const badge = reasonLabels[log.reason] || { label: log.reason, color: 'bg-slate-500/15 text-slate-600 dark:text-slate-300' }
+
+                        return (
+                          <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-white/[0.02]">
+                            <td className="p-3 font-bold text-slate-900 dark:text-white">{log.itemName}</td>
+                            <td className="p-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${badge.color}`}>
+                                {badge.label}
+                              </span>
+                            </td>
+                            <td className="p-3 text-right font-semibold text-slate-700 dark:text-slate-300">
+                              -{log.quantity}
+                            </td>
+                            <td className="p-3 text-right font-black text-rose-600 dark:text-rose-400">
+                              -${log.totalLoss.toFixed(2)}
+                            </td>
+                            <td className="p-3 text-slate-400 whitespace-nowrap">
+                              {new Date(log.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                            </td>
+                            <td className="p-3 text-slate-500 dark:text-slate-400 italic max-w-xs truncate">
+                              {log.notes || '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Add Item & Stock Modal Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -662,6 +912,108 @@ export default function InventoryManager({ onNavigateToImport }: InventoryManage
                 </Button>
               </div>
             </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Record Waste / Spoilage Modal Dialog */}
+      <Dialog open={!!wasteItem} onOpenChange={(open) => !open && setWasteItem(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+              <Trash2 className="w-5 h-5" />
+              <span>Record Spoilage & Wastage</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          {wasteItem && (
+            <form onSubmit={handleRecordWaste} className="space-y-4 pt-2 text-xs">
+              {wasteError && (
+                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-medium">
+                  {wasteError}
+                </div>
+              )}
+
+              <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/30">
+                <p className="font-extrabold text-sm text-slate-900 dark:text-white">{wasteItem.menuItem.name}</p>
+                <p className="text-slate-500 text-[11px]">
+                  Current Stock: <span className="font-bold text-slate-900 dark:text-white">{wasteItem.quantity} {wasteItem.unit}</span> • Unit Price: ${wasteItem.menuItem.price.toFixed(2)}
+                </p>
+              </div>
+
+              <div>
+                <Label className="text-xs font-semibold">Quantity to Write Off ({wasteItem.unit})</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max={wasteItem.quantity}
+                  required
+                  autoFocus
+                  value={wasteQuantity}
+                  onChange={(e) => setWasteQuantity(e.target.value)}
+                  className="mt-1 font-bold text-lg"
+                />
+                <div className="flex gap-1.5 mt-2">
+                  {['1', '2', '5', '10'].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setWasteQuantity(preset)}
+                      className="flex-1 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                    >
+                      {preset} {wasteItem.unit}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs font-semibold">Reason for Spoilage / Wastage</Label>
+                <Select value={wasteReason} onValueChange={setWasteReason}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="expired">Expired / Past Best Before Date</SelectItem>
+                    <SelectItem value="spilled_damaged">Spilled / Dropped / Broken Container</SelectItem>
+                    <SelectItem value="burnt_prep_error">Burnt / Preparation & Barista Mistake</SelectItem>
+                    <SelectItem value="quality_rejection">Quality Rejection / Taste Defect</SelectItem>
+                    <SelectItem value="theft_loss">Unaccounted Shrinkage / Loss</SelectItem>
+                    <SelectItem value="other">Other Incident</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-xs font-semibold">Incident Details / Staff Notes (Optional)</Label>
+                <Input
+                  value={wasteNotes}
+                  onChange={(e) => setWasteNotes(e.target.value)}
+                  placeholder="e.g. Dropped tray during rush, sour milk smell"
+                  className="mt-1"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 flex justify-between items-center text-xs font-bold">
+                <span className="text-slate-500">Estimated Financial Loss:</span>
+                <span className="text-rose-600 dark:text-rose-400 text-sm font-black">
+                  -${((parseFloat(wasteQuantity) || 0) * wasteItem.menuItem.price).toFixed(2)}
+                </span>
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-slate-200/60 dark:border-white/[0.08]">
+                <Button type="button" variant="outline" onClick={() => setWasteItem(null)} className="flex-1">
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={wasteSubmitting}
+                  className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold"
+                >
+                  {wasteSubmitting ? 'Logging...' : 'Confirm Waste'}
+                </Button>
+              </div>
+            </form>
           )}
         </DialogContent>
       </Dialog>

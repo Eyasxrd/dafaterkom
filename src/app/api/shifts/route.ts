@@ -44,7 +44,39 @@ export async function GET(request: NextRequest) {
           .filter(o => o.paymentMethod !== 'cash')
           .reduce((sum, o) => sum + o.totalAmount, 0)
 
-        const expectedCash = activeShift.startCash + cashSales
+        // Calculate Petty Cash movements for this shift
+        const cashLogs = await prisma.auditLog.findMany({
+          where: {
+            tenantId,
+            entityType: 'shift',
+            entityId: activeShift.id,
+            action: { in: ['cash_in', 'cash_out'] }
+          },
+          orderBy: { timestamp: 'desc' }
+        })
+
+        let cashInTotal = 0
+        let cashOutTotal = 0
+        const pettyCashItems: Array<{ id: string; type: string; amount: number; reason: string; timestamp: Date }> = []
+
+        for (const log of cashLogs) {
+          try {
+            const parsed = log.afterValue ? JSON.parse(log.afterValue) : null
+            if (parsed && typeof parsed.amount === 'number') {
+              if (log.action === 'cash_in') cashInTotal += parsed.amount
+              if (log.action === 'cash_out') cashOutTotal += parsed.amount
+              pettyCashItems.push({
+                id: log.id,
+                type: log.action,
+                amount: parsed.amount,
+                reason: parsed.reason || log.notes || '',
+                timestamp: log.timestamp
+              })
+            }
+          } catch {}
+        }
+
+        const expectedCash = activeShift.startCash + cashSales + cashInTotal - cashOutTotal
 
         return NextResponse.json({
           shift: activeShift,
@@ -53,7 +85,10 @@ export async function GET(request: NextRequest) {
             cashSales,
             cardSales,
             totalSales: cashSales + cardSales,
-            expectedCash
+            cashInTotal,
+            cashOutTotal,
+            expectedCash,
+            pettyCashItems
           }
         })
       }
@@ -200,8 +235,30 @@ export async function PATCH(request: NextRequest) {
       .filter(o => o.paymentMethod !== 'cash')
       .reduce((sum, o) => sum + o.totalAmount, 0)
 
+    // Calculate Petty Cash movements for this shift
+    const cashLogs = await prisma.auditLog.findMany({
+      where: {
+        tenantId,
+        entityType: 'shift',
+        entityId: shiftId,
+        action: { in: ['cash_in', 'cash_out'] }
+      }
+    })
+
+    let cashInTotal = 0
+    let cashOutTotal = 0
+    for (const log of cashLogs) {
+      try {
+        const parsed = log.afterValue ? JSON.parse(log.afterValue) : null
+        if (parsed && typeof parsed.amount === 'number') {
+          if (log.action === 'cash_in') cashInTotal += parsed.amount
+          if (log.action === 'cash_out') cashOutTotal += parsed.amount
+        }
+      } catch {}
+    }
+
     const countedEndCash = parseFloat(endCash) || 0
-    const expectedEndCash = currentShift.startCash + cashSales
+    const expectedEndCash = currentShift.startCash + cashSales + cashInTotal - cashOutTotal
     const cashDiscrepancy = countedEndCash - expectedEndCash
 
     const updatedShift = await prisma.shift.update({
@@ -234,6 +291,8 @@ export async function PATCH(request: NextRequest) {
         startCash: currentShift.startCash,
         cashSales,
         cardSales,
+        cashInTotal,
+        cashOutTotal,
         totalSales: cashSales + cardSales,
         totalOrders: orders.length,
         countedEndCash,

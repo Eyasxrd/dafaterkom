@@ -184,14 +184,14 @@ body {
 
 /* Liquid Gradient Buttons */
 .liquid-btn-primary {
-  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 50%, #06b6d4 100%);
+  background: var(--liquid-gradient, linear-gradient(135deg, #2563eb 0%, #4f46e5 50%, #06b6d4 100%));
   color: #ffffff;
   box-shadow: 0 4px 18px 0 rgba(37, 99, 235, 0.35), inset 0 1px 1px 0 rgba(255, 255, 255, 0.35);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .liquid-btn-primary:hover {
-  background: linear-gradient(135deg, #1d4ed8 0%, #4338ca 50%, #0891b2 100%);
+  filter: brightness(1.08);
   box-shadow: 0 6px 24px 0 rgba(37, 99, 235, 0.48), inset 0 1px 1px 0 rgba(255, 255, 255, 0.45);
   transform: translateY(-1px);
 }
