@@ -6,11 +6,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Users, Banknote, CreditCard, Smartphone, Check, Divide } from 'lucide-react'
+import { formatCurrency, getCurrencySymbol } from '@/lib/currency'
+import { useLocale } from 'next-intl'
 
 interface SplitBillModalProps {
   isOpen: boolean
   onClose: () => void
   totalAmount: number
+  currency?: string
   onCompleteSplit: (payments: { method: string; amount: number }[]) => void
 }
 
@@ -18,8 +21,11 @@ export default function SplitBillModal({
   isOpen,
   onClose,
   totalAmount,
+  currency,
   onCompleteSplit
 }: SplitBillModalProps) {
+  const locale = useLocale() || 'en'
+  const isAr = locale === 'ar'
   const [splitCount, setSplitCount] = useState<number>(2)
   const [payments, setPayments] = useState<{ method: string; amount: number }[]>([
     { method: 'cash', amount: Math.round((totalAmount / 2) * 100) / 100 },
@@ -75,7 +81,7 @@ export default function SplitBillModal({
           <div className="flex justify-between items-center bg-slate-100 dark:bg-white/[0.04] p-3 rounded-2xl mt-2">
             <span className="text-xs text-slate-500 font-medium">Order Total:</span>
             <span className="text-lg font-extrabold text-blue-600 dark:text-blue-400">
-              ${totalAmount.toFixed(2)}
+              {formatCurrency(totalAmount, currency, isAr)}
             </span>
           </div>
         </DialogHeader>
@@ -178,7 +184,7 @@ export default function SplitBillModal({
               : 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
           }`}>
             <span>Remaining Unassigned:</span>
-            <span className="font-mono font-bold">${remaining.toFixed(2)}</span>
+            <span className="font-mono font-bold">{formatCurrency(remaining, currency, isAr)}</span>
           </div>
         </div>
 

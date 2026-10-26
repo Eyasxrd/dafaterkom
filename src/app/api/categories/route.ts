@@ -6,11 +6,15 @@ export async function GET(request: NextRequest) {
   try {
     const tenantId = getTenantIdFromRequest(request)
     const categories = await prisma.category.findMany({
-      where: { tenantId }
+      where: { tenantId },
+      orderBy: {
+        name: 'asc'
+      }
     })
     return NextResponse.json(categories)
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch categories' }, { status: 500 })
+    console.error('Categories GET error:', error)
+    return NextResponse.json({ error: 'Failed to fetch categories', details: error instanceof Error ? error.message : String(error) }, { status: 500 })
   }
 }
 
@@ -18,13 +22,18 @@ export async function POST(request: NextRequest) {
   try {
     const tenantId = getTenantIdFromRequest(request)
     const body = await request.json()
-    const { name, description } = body
+    const { name, description, parentId } = body
+
+    if (!name || !name.trim()) {
+      return NextResponse.json({ error: 'Category name is required' }, { status: 400 })
+    }
 
     const category = await prisma.category.create({
       data: {
         tenantId,
-        name,
-        description
+        name: name.trim(),
+        description: description?.trim() || null,
+        parentId: parentId || null
       }
     })
 

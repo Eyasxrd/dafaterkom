@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
       where: { id: tenantId },
       select: {
         businessName: true,
+        currency: true,
         taxNumber: true,
         taxRate: true,
         receiptHeader: true,
@@ -125,6 +126,7 @@ export async function GET(request: NextRequest) {
       reportDate: targetDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
       tenant: {
         businessName: tenant?.businessName || 'Dafaterkom Café',
+        currency: tenant?.currency || 'USD',
         taxNumber: tenant?.taxNumber || '300123456700003',
         taxRate: tenant?.taxRate ?? 15
       },

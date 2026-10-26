@@ -180,6 +180,7 @@ interface SelectItemProps {
   onValueChange?: (value: string) => void
   setIsOpen?: (open: boolean) => void
   isSelected?: boolean
+  className?: string
 }
 
 const SelectItem = ({

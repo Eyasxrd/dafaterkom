@@ -23,8 +23,13 @@ import {
 } from 'lucide-react'
 import AppleWalletPassPreview from '@/components/loyalty/AppleWalletPassPreview'
 import AppleWalletButton from '@/components/loyalty/AppleWalletButton'
+import Link from 'next/link'
+import { useParams } from 'next/navigation'
+import Footer from '@/components/Footer'
 
 export default function CustomerLoyaltyPage() {
+  const params = useParams()
+  const locale = (params?.locale as string) || 'en'
   const [phone, setPhone] = useState('')
   const [name, setName] = useState('')
   const [customer, setCustomer] = useState<any>(null)
@@ -39,10 +44,16 @@ export default function CustomerLoyaltyPage() {
   const [redeemedRewards, setRedeemedRewards] = useState<string[]>([])
 
   useEffect(() => {
+    document.title = 'Customer Loyalty & Digital Member Pass | Dafaterkom'
     // Load shop details
     fetch('/api/tenant')
       .then(res => res.json())
-      .then(data => setTenant(data))
+      .then(data => {
+        setTenant(data)
+        if (data?.businessName) {
+          document.title = `${data.businessName} - Loyalty & Rewards | Dafaterkom`
+        }
+      })
       .catch(console.error)
   }, [])
 
@@ -127,11 +138,11 @@ export default function CustomerLoyaltyPage() {
   const tier = getTier(currentPoints)
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 relative overflow-x-hidden font-sans">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-between p-3 sm:p-6 relative overflow-x-hidden font-sans">
       
       {/* Ambient Mesh Glow */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-gradient-to-tr from-blue-600/20 via-indigo-600/15 to-emerald-500/20 rounded-full blur-[120px]" />
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] sm:w-[500px] h-[300px] sm:h-[500px] bg-gradient-to-tr from-blue-600/20 via-indigo-600/15 to-emerald-500/20 rounded-full blur-[100px] sm:blur-[120px]" />
       </div>
 
       {/* Push Notification Simulator Banner */}
@@ -166,19 +177,19 @@ export default function CustomerLoyaltyPage() {
       <div className="w-full max-w-md glass-panel bg-slate-900/80 border border-white/10 rounded-3xl p-6 md:p-7 shadow-2xl space-y-6 relative z-10 backdrop-blur-2xl">
         
         {/* Café Branding Header */}
-        <div className="text-center space-y-2">
-          <div className="w-16 h-16 rounded-3xl liquid-btn-primary text-white flex items-center justify-center mx-auto shadow-xl shadow-blue-600/30">
+        <Link href={`/${locale}`} className="text-center space-y-2 group block hover:opacity-90 transition-opacity">
+          <div className="w-16 h-16 rounded-3xl liquid-btn-primary text-white flex items-center justify-center mx-auto shadow-xl shadow-blue-600/30 group-hover:scale-105 transition-transform">
             <Coffee className="w-8 h-8" />
           </div>
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-white">
+            <h1 className="text-2xl font-black tracking-tight text-white group-hover:text-blue-300 transition-colors">
               {tenant?.businessName || 'Dafaterkom Rewards'}
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
               Digital Loyalty Card & Instant Apple Wallet Member Pass
             </p>
           </div>
-        </div>
+        </Link>
 
         {!isEnrolled ? (
           /* Enrollment Form */
@@ -206,7 +217,7 @@ export default function CustomerLoyaltyPage() {
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Alex Johnson"
+                    placeholder="Enter your full name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-2xl border border-slate-700 bg-slate-800/80 text-sm focus:ring-2 focus:ring-blue-500 outline-none text-white font-semibold placeholder:text-slate-500"
@@ -416,6 +427,11 @@ export default function CustomerLoyaltyPage() {
           </div>
         )}
 
+      </div>
+
+      {/* Embedded Footer */}
+      <div className="w-full max-w-5xl mt-12 relative z-10">
+        <Footer />
       </div>
     </div>
   )

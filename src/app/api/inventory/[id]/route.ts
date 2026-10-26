@@ -8,24 +8,40 @@ export async function PATCH(
   try {
     const { id } = await params
     const body = await request.json()
-    const { quantity, unit, lowStockThreshold } = body
+    const { name, description, quantity, unit, lowStockThreshold, costPerUnit } = body
 
-    const inventory = await prisma.inventory.update({
+    const existing = await prisma.ingredient.findUnique({
+      where: { id }
+    })
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Ingredient inventory record not found' }, { status: 404 })
+    }
+
+    const updated = await prisma.ingredient.update({
       where: { id },
       data: {
-        ...(quantity !== undefined && { quantity: parseInt(quantity) }),
-        ...(unit !== undefined && { unit }),
-        ...(lowStockThreshold !== undefined && { lowStockThreshold: parseInt(lowStockThreshold) }),
+        ...(name !== undefined && { name: name.trim() }),
+        ...(description !== undefined && { description: description?.trim() || null }),
+        ...(quantity !== undefined && { quantity: Math.max(0, parseFloat(quantity)) }),
+        ...(unit !== undefined && { unit: unit.trim() }),
+        ...(lowStockThreshold !== undefined && { lowStockThreshold: Math.max(0, parseFloat(lowStockThreshold)) }),
+        ...(costPerUnit !== undefined && { costPerUnit: Math.max(0, parseFloat(costPerUnit)) }),
         ...(quantity !== undefined && { lastRestocked: new Date() })
       },
       include: {
-        menuItem: true
+        recipes: {
+          include: {
+            menuItem: true
+          }
+        }
       }
     })
 
-    return NextResponse.json(inventory)
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to update inventory' }, { status: 500 })
+    return NextResponse.json(updated)
+  } catch (error: any) {
+    console.error('Failed to update inventory ingredient:', error)
+    return NextResponse.json({ error: error?.message || 'Failed to update inventory' }, { status: 500 })
   }
 }
 
@@ -35,12 +51,26 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    await prisma.inventory.delete({
+
+    // Check if ingredient is used in active recipes
+    const recipesCount = await prisma.recipe.count({
+      where: { ingredientId: id }
+    })
+
+    if (recipesCount > 0) {
+      return NextResponse.json(
+        { error: `Cannot delete ingredient because it is formulated in ${recipesCount} recipe(s). Please remove it from recipes first.` },
+        { status: 400 }
+      )
+    }
+
+    await prisma.ingredient.delete({
       where: { id }
     })
 
     return NextResponse.json({ success: true })
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to delete inventory' }, { status: 500 })
+  } catch (error: any) {
+    console.error('Failed to delete inventory ingredient:', error)
+    return NextResponse.json({ error: error?.message || 'Failed to delete inventory item' }, { status: 500 })
   }
 }

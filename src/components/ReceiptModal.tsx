@@ -6,10 +6,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Coffee, Printer, QrCode, MessageCircle, ChefHat } from 'lucide-react'
 import AppleWalletButton from '@/components/loyalty/AppleWalletButton'
 import { generateZatcaQrDataUrl } from '@/lib/zatca'
+import { useLocale } from 'next-intl'
+import { formatCurrency, getCurrencySymbol } from '@/lib/currency'
 
 export interface ReceiptData {
   orderNumber: string
   createdAt: string | Date
+  currency?: string
   staffName?: string
   tableNumber?: number | null
   customerName?: string | null
@@ -44,6 +47,8 @@ interface ReceiptModalProps {
 }
 
 export default function ReceiptModal({ isOpen, onClose, receipt, onPrintKot }: ReceiptModalProps) {
+  const locale = useLocale() || 'en'
+  const isAr = locale === 'ar'
   const [zatcaQrUrl, setZatcaQrUrl] = useState<string | null>(null)
 
   useEffect(() => {
@@ -71,17 +76,19 @@ export default function ReceiptModal({ isOpen, onClose, receipt, onPrintKot }: R
     timeStyle: 'short'
   })
 
+  const cur = receipt.currency || 'USD'
+
   const handleWhatsAppShare = () => {
-    const itemsText = receipt.items.map(i => `• ${i.name} x${i.quantity} - $${i.subtotal.toFixed(2)}`).join('\n')
+    const itemsText = receipt.items.map(i => `• ${i.name} x${i.quantity} - ${formatCurrency(i.subtotal, cur, isAr)}`).join('\n')
     const message = `🧾 *${receipt.businessName || 'Dafaterkom Café'}*
 Order #${receipt.orderNumber}
 Date: ${formattedDate}
 -------------------------
 ${itemsText}
 -------------------------
-Subtotal: $${receipt.subtotal.toFixed(2)}
-${receipt.discount ? `Discount: -$${receipt.discount.toFixed(2)}\n` : ''}Tax (VAT): +$${(receipt.tax || 0).toFixed(2)}
-*Total: $${receipt.totalAmount.toFixed(2)}*
+Subtotal: ${formatCurrency(receipt.subtotal, cur, isAr)}
+${receipt.discount ? `Discount: -${formatCurrency(receipt.discount, cur, isAr)}\n` : ''}Tax (VAT): +${formatCurrency(receipt.tax || 0, cur, isAr)}
+*Total: ${formatCurrency(receipt.totalAmount, cur, isAr)}*
 Payment: ${receipt.paymentMethod.toUpperCase()}
 -------------------------
 Thank you for your visit!`
@@ -200,8 +207,8 @@ Thank you for your visit!`
                     <div className="flex justify-between items-start">
                       <span className="flex-1 font-medium">{item.name}</span>
                       <span className="w-8 text-center">{item.quantity}</span>
-                      <span className="w-14 text-right">${item.price.toFixed(2)}</span>
-                      <span className="w-14 text-right font-semibold">${item.subtotal.toFixed(2)}</span>
+                      <span className="w-16 text-right">{formatCurrency(item.price, cur, isAr)}</span>
+                      <span className="w-16 text-right font-semibold">{formatCurrency(item.subtotal, cur, isAr)}</span>
                     </div>
                     {item.notes && (
                       <div className="text-[10px] text-zinc-500 dark:text-zinc-400 italic pl-2">
@@ -217,27 +224,33 @@ Thank you for your visit!`
             <div className="space-y-1 text-[11px] border-b border-dashed border-zinc-400 dark:border-zinc-700 pb-3 mb-3">
               <div className="flex justify-between">
                 <span>Subtotal:</span>
-                <span>${receipt.subtotal.toFixed(2)}</span>
+                <span>{formatCurrency(receipt.subtotal, cur, isAr)}</span>
               </div>
               {receipt.discount && receipt.discount > 0 ? (
                 <div className="flex justify-between text-emerald-700 dark:text-emerald-400 font-medium">
                   <span>Discount:</span>
-                  <span>-${receipt.discount.toFixed(2)}</span>
+                  <span>-{formatCurrency(receipt.discount, cur, isAr)}</span>
                 </div>
               ) : null}
               {receipt.tax && receipt.tax > 0 ? (
                 <div className="flex justify-between text-zinc-700 dark:text-zinc-300">
                   <span>Tax (VAT {effectiveTaxRate}%):</span>
-                  <span>+${receipt.tax.toFixed(2)}</span>
+                  <span>+{formatCurrency(receipt.tax, cur, isAr)}</span>
                 </div>
               ) : null}
               <div className="flex justify-between text-sm font-black pt-2 border-t border-zinc-300 dark:border-zinc-700">
                 <span>TOTAL:</span>
-                <span>${receipt.totalAmount.toFixed(2)}</span>
+                <span>{formatCurrency(receipt.totalAmount, cur, isAr)}</span>
               </div>
               <div className="flex justify-between pt-1 text-[10px] text-zinc-500 dark:text-zinc-400 uppercase">
                 <span>Payment:</span>
-                <span className="font-bold">{receipt.paymentMethod}</span>
+                <span className="font-bold">
+                  {receipt.paymentMethod === 'gift' 
+                    ? (isAr ? 'ضيافة' : 'COMP / GIFT') 
+                    : receipt.paymentMethod === 'staff' 
+                    ? (isAr ? 'وجبات موظفين' : 'STAFF MEAL') 
+                    : receipt.paymentMethod}
+                </span>
               </div>
             </div>
 

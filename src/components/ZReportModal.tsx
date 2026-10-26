@@ -26,6 +26,7 @@ export interface ZReportData {
     businessName: string
     taxNumber: string
     taxRate: number
+    currency?: string
   }
   summary: {
     totalOrdersCount: number
@@ -94,7 +95,7 @@ export default function ZReportModal({ isOpen, onClose, data }: ZReportModalProp
       ['Business Name', data.tenant.businessName],
       ['Tax Registration Number', data.tenant.taxNumber],
       [''],
-      ['SALES & TAX SUMMARY', 'AMOUNT (USD)'],
+      ['SALES & TAX SUMMARY', `AMOUNT (${data.tenant.currency || 'USD'})`],
       ['Gross Sales', data.summary.grossSales.toFixed(2)],
       ['Total Discounts', `-${data.summary.totalDiscount.toFixed(2)}`],
       ['Total VAT (15%)', data.summary.totalTax.toFixed(2)],
@@ -109,13 +110,13 @@ export default function ZReportModal({ isOpen, onClose, data }: ZReportModalProp
       ['Refunded Orders', data.summary.refundedCount],
       ['Cancelled Orders', data.summary.cancelledCount],
       [''],
-      ['PAYMENT TENDER BREAKDOWN', 'AMOUNT (USD)'],
+      ['PAYMENT TENDER BREAKDOWN', `AMOUNT (${data.tenant.currency || 'USD'})`],
       ['Cash Payments', data.tenders.cash.toFixed(2)],
       ['Card Payments', data.tenders.card.toFixed(2)],
       ['Mobile Payments', data.tenders.mobile.toFixed(2)],
       ['Split / Multi-tender', data.tenders.split.toFixed(2)],
       [''],
-      ['DRAWER RECONCILIATION', 'AMOUNT (USD)'],
+      ['DRAWER RECONCILIATION', `AMOUNT (${data.tenant.currency || 'USD'})`],
       ['Opening Cash Float', data.drawerReconciliation.openingFloat.toFixed(2)],
       ['Cash Sales', data.drawerReconciliation.cashSales.toFixed(2)],
       ['Refunds Paid Out', `-${data.drawerReconciliation.refundsPaid.toFixed(2)}`],

@@ -5,6 +5,8 @@ const prisma = new PrismaClient()
 
 async function main() {
   // Delete existing data in correct order (child tables first)
+  await prisma.menuOnItem.deleteMany()
+  await prisma.menu.deleteMany()
   await prisma.notificationLog.deleteMany()
   await prisma.loyaltyCampaign.deleteMany()
   await prisma.customerConsent.deleteMany()

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getTenantIdFromRequest } from '@/lib/tenant-context'
+import { postWastageJournal } from '@/lib/accounting'
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,17 +25,19 @@ export async function GET(request: NextRequest) {
         details = log.afterValue ? JSON.parse(log.afterValue) : {}
       } catch {}
 
-      const itemLoss = details.totalLoss ?? 0
+      const itemLoss = details.totalLoss ?? (details.financialLoss ?? 0)
       const itemQty = details.quantity ?? 0
       totalLossAmount += itemLoss
       totalItemsWasted += itemQty
 
       return {
         id: log.id,
-        inventoryId: log.entityId,
-        itemName: details.itemName || 'Item',
+        ingredientId: log.entityId,
+        itemName: details.ingredientName || details.itemName || 'Raw Material',
         quantity: itemQty,
-        reason: details.reason || 'unspecified',
+        unit: details.unit || 'units',
+        unitCost: details.unitCost || 0,
+        reason: details.reason || 'expired',
         totalLoss: itemLoss,
         notes: details.notes || log.notes || '',
         staffId: log.staffId,
@@ -44,8 +47,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      totalLossAmount,
-      totalItemsWasted,
+      totalLossAmount: Math.round(totalLossAmount * 100) / 100,
+      totalItemsWasted: Math.round(totalItemsWasted * 100) / 100,
       items
     })
   } catch (error) {
@@ -58,10 +61,11 @@ export async function POST(request: NextRequest) {
   try {
     const tenantId = getTenantIdFromRequest(request)
     const body = await request.json()
-    const { inventoryId, quantity, reason, notes, staffId } = body
+    const { ingredientId, inventoryId, quantity, reason, notes, staffId } = body
 
-    if (!inventoryId) {
-      return NextResponse.json({ error: 'inventoryId is required' }, { status: 400 })
+    const targetId = ingredientId || inventoryId
+    if (!targetId) {
+      return NextResponse.json({ error: 'Ingredient ID is required' }, { status: 400 })
     }
 
     const wasteQty = parseFloat(quantity)
@@ -73,70 +77,90 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Wastage reason is required' }, { status: 400 })
     }
 
-    const inventory = await prisma.inventory.findUnique({
-      where: { id: inventoryId },
-      include: {
-        menuItem: true
-      }
+    const ingredient = await prisma.ingredient.findUnique({
+      where: { id: targetId }
     })
 
-    if (!inventory) {
-      return NextResponse.json({ error: 'Inventory record not found' }, { status: 404 })
+    if (!ingredient) {
+      return NextResponse.json({ error: 'Ingredient record not found' }, { status: 404 })
     }
 
-    if (inventory.menuItem.tenantId !== tenantId) {
-      return NextResponse.json({ error: 'Unauthorized access to inventory' }, { status: 403 })
+    if (ingredient.tenantId !== tenantId) {
+      return NextResponse.json({ error: 'Unauthorized access to ingredient' }, { status: 403 })
     }
 
-    // New remaining quantity (safe floor at 0)
-    const newQty = Math.max(0, inventory.quantity - Math.round(wasteQty))
-    const unitCost = inventory.menuItem.price
-    const totalLoss = wasteQty * unitCost
+    // New remaining quantity (floor at 0)
+    const newQty = Math.max(0, Math.round((ingredient.quantity - wasteQty) * 1000) / 1000)
+    const unitCost = ingredient.costPerUnit || 0
+    const totalLoss = Math.round(wasteQty * unitCost * 100) / 100
 
-    // Update inventory quantity
-    const updated = await prisma.inventory.update({
-      where: { id: inventoryId },
+    // 1. Update ingredient quantity
+    const updatedIngredient = await prisma.ingredient.update({
+      where: { id: targetId },
       data: {
         quantity: newQty
-      },
-      include: {
-        menuItem: {
-          include: { category: true }
-        }
       }
     })
 
-    // Record immutable audit entry
+    // 2. Also record in StockMovement if desired
+    try {
+      await prisma.stockMovement.create({
+        data: {
+          tenantId,
+          type: 'out_waste',
+          ingredientId: targetId,
+          quantity: wasteQty,
+          unitCost,
+          totalAmount: totalLoss,
+          reference: `Waste: ${reason.trim()}`,
+          notes: notes?.trim() || `Recorded wastage for ${ingredient.name}`,
+          staffId: staffId || null
+        }
+      })
+    } catch (smErr) {
+      console.error('Warning: Failed to create stock movement for waste:', smErr)
+    }
+
+    // 3. Record immutable audit entry
     const audit = await prisma.auditLog.create({
       data: {
         tenantId,
         staffId: staffId || null,
         action: 'inventory_waste',
-        entityType: 'inventory',
-        entityId: inventoryId,
-        beforeValue: JSON.stringify({ quantity: inventory.quantity }),
+        entityType: 'ingredient',
+        entityId: targetId,
+        beforeValue: JSON.stringify({ quantity: ingredient.quantity }),
         afterValue: JSON.stringify({
-          itemName: inventory.menuItem.name,
+          ingredientName: ingredient.name,
           quantity: wasteQty,
+          unit: ingredient.unit,
           remainingQuantity: newQty,
           unitCost,
           totalLoss,
+          financialLoss: totalLoss,
           reason: reason.trim(),
           notes: notes?.trim() || '',
           recordedAt: new Date().toISOString()
         }),
-        notes: `[Wastage: ${reason.trim()}] ${wasteQty}x ${inventory.menuItem.name} (Estimated Loss: $${totalLoss.toFixed(2)})`
+        notes: `[Wastage: ${reason.trim()}] ${wasteQty} ${ingredient.unit} of ${ingredient.name} (Loss: $${totalLoss.toFixed(2)})`
       }
     })
 
+    // 4. Auto-post double-entry accounting journal
+    try {
+      await postWastageJournal(tenantId, totalLoss, audit.notes || undefined, audit.id)
+    } catch (journalErr) {
+      console.error('Warning: Failed to auto-post journal for wastage:', journalErr)
+    }
+
     return NextResponse.json({
       success: true,
-      updatedInventory: updated,
+      updatedIngredient,
       loss: totalLoss,
       auditId: audit.id
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to record inventory waste:', error)
-    return NextResponse.json({ error: 'Failed to record inventory waste' }, { status: 500 })
+    return NextResponse.json({ error: error.message || 'Failed to record inventory waste' }, { status: 500 })
   }
 }

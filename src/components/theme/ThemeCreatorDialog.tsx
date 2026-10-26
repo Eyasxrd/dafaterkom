@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useLocale } from 'next-intl'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,6 +28,8 @@ const COLOR_SHORTCUTS = [
 ]
 
 export default function ThemeCreatorDialog({ isOpen, onClose }: ThemeCreatorDialogProps) {
+  const locale = useLocale() || 'en'
+  const isAr = locale === 'ar'
   const { addCustomTheme } = useThemeStore()
 
   const [themeName, setThemeName] = useState('')
@@ -104,13 +107,15 @@ export default function ThemeCreatorDialog({ isOpen, onClose }: ThemeCreatorDial
             </div>
 
             <div>
-              <Label className="text-xs font-semibold">اسم السمة (بالعربية - اختياري)</Label>
+              <Label className="text-xs font-semibold">
+                {isAr ? 'اسم السمة (بالعربية - اختياري)' : 'Theme Name (Arabic - Optional)'}
+              </Label>
               <Input
-                placeholder="مثال: ذهبي المحمصة"
+                placeholder={isAr ? 'مثال: ذهبي المحمصة' : 'e.g. Roastery Gold (Arabic)'}
                 value={themeNameAr}
                 onChange={(e) => setThemeNameAr(e.target.value)}
                 className="mt-1 h-9 text-xs text-right"
-                dir="rtl"
+                dir={isAr ? 'rtl' : 'ltr'}
               />
             </div>
 

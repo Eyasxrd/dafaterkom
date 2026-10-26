@@ -3,10 +3,28 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
 
-const isDev = process.env.NODE_ENV === 'development';
-let nextProcess: any = null;
+import * as http from 'http';
 
+process.on('uncaughtException', (err) => {
+  console.error('Main process error:', err);
+});
+
+const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+let nextProcess: any = null;
 let mainWindow: BrowserWindow | null = null;
+
+function isServerReady(url = 'http://localhost:3000'): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.get(url, (res) => {
+      resolve(res.statusCode !== undefined);
+    });
+    req.on('error', () => resolve(false));
+    req.setTimeout(1000, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -19,24 +37,38 @@ function createWindow(): void {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
     },
-    // icon: path.join(__dirname, '../public/icon.svg'), // Will add proper icon later
     title: 'Dafaterkom - Cafe Point of Sale System',
   });
 
-  // Load the app
+  let retries = 0;
+  const maxRetries = 60;
+
+  const loadApp = async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+
+    const ready = await isServerReady('http://localhost:3000');
+    if (ready) {
+      mainWindow.loadURL('http://localhost:3000');
+    } else {
+      if (retries < maxRetries) {
+        retries++;
+        setTimeout(loadApp, 1000);
+      } else {
+        mainWindow.loadURL('http://localhost:3000').catch(() => {});
+      }
+    }
+  };
+
+  loadApp();
+
   if (isDev) {
-    mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();
-  } else {
-    // For production, load from the running Next.js server
-    mainWindow.loadURL('http://localhost:3000');
   }
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 
-  // Create application menu
   createMenu();
 }
 
@@ -96,19 +128,21 @@ function createMenu(): void {
 }
 
 app.on('ready', async () => {
-  // Start Next.js server for production builds
-  if (!isDev) {
-    const appPath = path.join(__dirname, '..');
-    nextProcess = spawn('node', ['node_modules/.bin/next', 'start'], {
-      cwd: appPath,
-      stdio: 'inherit',
-      shell: true
-    });
-    
-    // Wait for server to start
-    await new Promise(resolve => setTimeout(resolve, 5000));
+  const ready = await isServerReady('http://localhost:3000');
+  if (!ready && !app.isPackaged) {
+    try {
+      const appPath = path.join(__dirname, '..');
+      nextProcess = spawn('npx', ['next', 'start'], {
+        cwd: appPath,
+        stdio: 'ignore',
+        shell: true,
+      });
+      nextProcess.on('error', (e: any) => console.warn('Next spawn warning:', e));
+    } catch (err) {
+      console.warn('Could not spawn next process:', err);
+    }
   }
-  
+
   createWindow();
 });
 

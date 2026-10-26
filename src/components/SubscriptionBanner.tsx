@@ -35,7 +35,7 @@ export default function SubscriptionBanner({ onNavigateToBilling }: Subscription
   }
 
   return (
-    <div className={`mx-4 md:mx-8 mb-4 p-3.5 rounded-2xl flex items-center justify-between text-xs font-medium border ${
+    <div className={`mx-0 mb-4 p-3.5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-medium border ${
       isPastDue
         ? 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400'
         : 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'

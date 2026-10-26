@@ -11,6 +11,7 @@ model Tenant {
   id              String   @id @default(uuid())
   businessName    String
   slug            String   @unique
+  clientCode      String?  @unique
   plan            String   @default("starter") // "starter", "growth", "pro"
   status          String   @default("trial")   // "trial", "active", "past_due", "suspended", "cancelled"
   currency        String   @default("USD")
@@ -18,6 +19,8 @@ model Tenant {
   taxNumber       String?
   receiptHeader   String?
   receiptFooter   String?
+  wasteCostingMethod String @default("fifo") // "fifo", "lifo", "wac"
+  printerConfig   String?  // JSON string storing receipt & kitchen printer settings
   geofenceLat     Float?
   geofenceLng     Float?
   geofenceRadius  Float    @default(200) // meters
@@ -39,6 +42,18 @@ model Tenant {
   auditLogs       AuditLog[]
   billingRecords  BillingRecord[]
   tables          RestaurantTable[]
+  menus           Menu[]
+  promoCodes      PromoCode[]
+  suppliers       Supplier[]
+  purchaseInvoices PurchaseInvoice[]
+  supplierPayments SupplierPayment[]
+  attendances     AttendanceRecord[]
+  accounts        Account[]
+  journalEntries  JournalEntry[]
+  expenseVouchers ExpenseVoucher[]
+  accountingPeriods AccountingPeriod[]
+  payrollDisbursements PayrollDisbursement[]
+  stockMovements  StockMovement[]
 }
 
 model Device {
@@ -97,19 +112,39 @@ model AuditLog {
 }
 
 model Staff {
-  id          String   @id @default(uuid())
-  tenantId    String   @default("default-shop")
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name        String
-  email       String   @unique
-  password    String
-  role        String   // "admin", "manager", "cashier", "kitchen"
-  joinCode    String?  // 6-digit join code for self-registration
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  orders      Order[]
-  shifts      Shift[]
+  id                 String    @id @default(uuid())
+  tenantId           String    @default("default-shop")
+  tenant             Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name               String
+  email              String?   @unique
+  password           String?   @default("")
+  canLogin           Boolean   @default(true) // Set to false when manager/HR registers an employee without web login
+  role               String    // "admin", "manager", "cashier", "kitchen", "hr", "worker"
+  joinCode           String?   // 6-digit join code for self-registration & clock-in
+  jobTitle           String?
+  phone              String?
+  department         String?   // "Kitchen", "Service", "Cashier", "Management", "Operations"
+  hireDate           DateTime? // Start date of employment
+  salaryType         String    @default("hourly") // "hourly" or "monthly"
+  monthlySalary      Float     @default(0.0) // Base fixed monthly salary
+  standardDailyHours Float     @default(8.0) // Standard working hours per day
+  hourlyRate         Float     @default(0.0) // Hourly base rate
+  overtimeRate       Float     @default(0.0) // Overtime hourly rate
+  shiftSchedule      String?   // Assigned shift schedule (e.g. "08:00 - 16:00")
+  bankName           String?
+  bankAccount        String?
+  nationalId         String?
+  emergencyContact   String?
+  totpSecret         String?   // Base32 secret for Google Authenticator (RFC 6238 TOTP)
+  totpEnabled        Boolean   @default(false) // Whether Google Authenticator 2FA is active
+  totpVerifiedAt     DateTime? // When Google Authenticator was verified/linked
+  requireTotpForShift Boolean  @default(false) // Force dynamic Google Authenticator OTP for shift start
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  orders             Order[]
+  shifts             Shift[]
+  attendances        AttendanceRecord[]
 }
 
 model Category {
@@ -118,6 +153,9 @@ model Category {
   tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name        String
   description String?
+  parentId    String?
+  parent      Category?  @relation("SubCategories", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Category[] @relation("SubCategories")
   items       MenuItem[]
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
@@ -134,9 +172,19 @@ model MenuItem {
   category    Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   imageUrl    String?
   isAvailable Boolean     @default(true)
+  ingredients String?
+  dietaryTags String?
+  allergens   String?
+  calories    Int?
+  prepTime    Int?
+  variants    String?
+  options     String?
   inventory   Inventory?
   recipes     Recipe[]
   orderItems  OrderItem[]
+  menus       MenuOnItem[]
+  promoGiftItems PromoCode[]
+  purchaseItems PurchaseInvoiceItem[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 }
@@ -150,8 +198,11 @@ model Ingredient {
   quantity          Float     @default(0)
   unit              String    // "pieces", "kg", "liters", "grams", etc.
   lowStockThreshold Float     @default(10)
+  costPerUnit       Float     @default(0)
   lastRestocked     DateTime?
   recipes           Recipe[]
+  purchaseItems     PurchaseInvoiceItem[]
+  stockMovements    StockMovement[]
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -159,14 +210,16 @@ model Ingredient {
 }
 
 model Recipe {
-  id           String     @id @default(uuid())
-  menuItemId   String
-  menuItem     MenuItem   @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
-  ingredientId String
-  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
-  quantity     Float      // Amount of ingredient needed
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  id              String     @id @default(uuid())
+  menuItemId      String
+  menuItem        MenuItem   @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  ingredientId    String
+  ingredient      Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  quantity        Float      // Base amount of ingredient needed
+  sizeMultipliers String?    // JSON string for sizing grammage overrides or multipliers, e.g. {"S": 9, "M": 18, "L": 27}
+  isOptional      Boolean    @default(false) // True for customizable modifiers, false for core base recipe
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
   @@unique([menuItemId, ingredientId])
 }
@@ -223,22 +276,27 @@ model OrderItem {
 }
 
 model Shift {
-  id          String    @id @default(uuid())
-  tenantId    String    @default("default-shop")
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  staffId     String
-  staff       Staff     @relation(fields: [staffId], references: [id])
-  startTime   DateTime  @default(now())
-  endTime     DateTime?
-  status      String    @default("active") // "active", "completed"
-  startCash   Float     @default(0)
-  endCash     Float?
-  cashSales   Float     @default(0)
-  cardSales   Float     @default(0)
-  totalOrders Int       @default(0)
-  notes       String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String    @id @default(uuid())
+  tenantId      String    @default("default-shop")
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  staffId       String
+  staff         Staff     @relation(fields: [staffId], references: [id])
+  startTime     DateTime  @default(now())
+  endTime       DateTime?
+  status        String    @default("active") // "active", "completed"
+  startCash     Float     @default(0)
+  endCash       Float?
+  cashSales     Float     @default(0)
+  cardSales     Float     @default(0)
+  totalOrders   Int       @default(0)
+  notes         String?
+  hasCashDrawer Boolean   @default(true)
+  roleInShift   String?
+  isOvertime    Boolean   @default(false)
+  overtimeHours Float?    @default(0)
+  attendanceId  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model Customer {
@@ -248,6 +306,7 @@ model Customer {
   name          String
   email         String?
   phone         String?
+  dateOfBirth   String?
   loyaltyPoints Int               @default(0)
   orders        Order[]
   consents      CustomerConsent[]
@@ -325,3 +384,297 @@ model RestaurantTable {
 
   @@unique([tenantId, number])
 }
+
+model Menu {
+  id              String       @id @default(uuid())
+  tenantId        String       @default("default-shop")
+  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name            String
+  slug            String
+  description     String?
+  type            String       @default("dine_in") // "dine_in", "delivery", "apps", "catering", "seasonal"
+  isActive        Boolean      @default(true)
+  currency        String       @default("USD")
+  headerImage     String?
+  badgeText       String?
+  qrColor         String       @default("#09090b")
+  orderingEnabled Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  items           MenuOnItem[]
+
+  @@unique([tenantId, slug])
+}
+
+model MenuOnItem {
+  id          String    @id @default(uuid())
+  menuId      String
+  menu        Menu      @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  menuItemId  String
+  menuItem    MenuItem  @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  customPrice Float?
+  sortOrder   Int       @default(0)
+  isAvailable Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  @@unique([menuId, menuItemId])
+}
+
+model PromoCode {
+  id              String    @id @default(uuid())
+  tenantId        String    @default("default-shop")
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  code            String
+  description     String?
+  discountType    String    @default("percentage") // "percentage", "free_item", "fixed_amount"
+  discountPercent Float?
+  discountAmount  Float?
+  freeItemId      String?
+  freeItem        MenuItem? @relation(fields: [freeItemId], references: [id], onDelete: SetNull)
+  minOrderAmount  Float?    @default(0)
+  maxDiscount     Float?
+  usageLimit      Int?
+  usedCount       Int       @default(0)
+  startDate       DateTime?
+  endDate         DateTime?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([tenantId, code])
+}
+
+model Supplier {
+  id               String            @id @default(uuid())
+  tenantId         String            @default("default-shop")
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name             String
+  contactPerson    String?
+  phone            String?
+  email            String?
+  address          String?
+  taxNumber        String?
+  balance          Float             @default(0)
+  notes            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  purchaseInvoices PurchaseInvoice[]
+  payments         SupplierPayment[]
+
+  @@unique([tenantId, name])
+}
+
+model PurchaseInvoice {
+  id                   String                @id @default(uuid())
+  tenantId             String                @default("default-shop")
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoiceNumber        String
+  supplierId           String
+  supplier             Supplier              @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  issueDate            DateTime              @default(now())
+  dueDate              DateTime?
+  status               String                @default("received") // "draft", "received", "cancelled"
+  paymentStatus        String                @default("unpaid")   // "unpaid", "partial", "paid"
+  subtotal             Float                 @default(0)
+  tax                  Float                 @default(0)
+  totalAmount          Float                 @default(0)
+  paidAmount           Float                 @default(0)
+  destinationWarehouse String                @default("raw_materials") // "raw_materials", "finished_goods"
+  notes                String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  items                PurchaseInvoiceItem[]
+  payments             SupplierPayment[]
+}
+
+model PurchaseInvoiceItem {
+  id                String          @id @default(uuid())
+  purchaseInvoiceId String
+  purchaseInvoice   PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
+  ingredientId      String?
+  ingredient        Ingredient?     @relation(fields: [ingredientId], references: [id], onDelete: SetNull)
+  menuItemId        String?
+  menuItem          MenuItem?       @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  itemName          String
+  quantity          Float
+  unit              String          // "kg", "liters", "pieces", etc.
+  unitPrice         Float
+  totalPrice        Float
+  createdAt         DateTime        @default(now())
+}
+
+model SupplierPayment {
+  id                String           @id @default(uuid())
+  tenantId          String           @default("default-shop")
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplierId        String
+  supplier          Supplier         @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  purchaseInvoiceId String?
+  purchaseInvoice   PurchaseInvoice? @relation(fields: [purchaseInvoiceId], references: [id], onDelete: SetNull)
+  amount            Float
+  paymentMethod     String           @default("cash") // "cash", "bank_transfer", "check", "petty_cash"
+  paymentDate       DateTime         @default(now())
+  referenceNumber   String?
+  notes             String?
+  createdAt         DateTime         @default(now())
+}
+
+model AttendanceRecord {
+  id            String    @id @default(uuid())
+  tenantId      String    @default("default-shop")
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  staffId       String
+  staff         Staff     @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  clockIn       DateTime  @default(now())
+  clockOut      DateTime?
+  totalHours    Float?
+  regularHours  Float?
+  overtimeHours Float?
+  source        String    @default("biometric") // "biometric", "pin", "manual"
+  status        String    @default("present")   // "present", "completed"
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Account {
+  id              String             @id @default(uuid())
+  tenantId        String             @default("default-shop")
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  code            String
+  name            String
+  type            String             // "asset", "liability", "equity", "revenue", "expense"
+  category        String             // "current_asset", "non_current_asset", "current_liability", "non_current_liability", "equity", "operating_revenue", "cost_of_sales", "operating_expense", "non_operating"
+  description     String?
+  currency        String             @default("USD")
+  balance         Float              @default(0)
+  isSystem        Boolean            @default(false)
+  isActive        Boolean            @default(true)
+  parentId        String?
+  parent          Account?           @relation("AccountHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children        Account[]          @relation("AccountHierarchy")
+  journalLines    JournalEntryLine[]
+  expenseVouchers ExpenseVoucher[]   @relation("ExpenseAccount")
+  paidVouchers    ExpenseVoucher[]   @relation("PaidFromAccount")
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@unique([tenantId, code])
+}
+
+model JournalEntry {
+  id            String             @id @default(uuid())
+  tenantId      String             @default("default-shop")
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entryNumber   String
+  date          DateTime           @default(now())
+  referenceType String?            // "pos_sale", "purchase_invoice", "supplier_payment", "payroll_disbursement", "inventory_waste", "expense_voucher", "manual", "period_closing"
+  referenceId   String?
+  narration     String
+  status        String             @default("posted") // "draft", "posted", "void"
+  totalDebit    Float              @default(0)
+  totalCredit   Float              @default(0)
+  createdBy     String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  lines         JournalEntryLine[]
+
+  @@unique([tenantId, entryNumber])
+}
+
+model JournalEntryLine {
+  id             String       @id @default(uuid())
+  journalEntryId String
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  accountId      String
+  account        Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  debit          Float        @default(0)
+  credit         Float        @default(0)
+  description    String?
+  createdAt      DateTime     @default(now())
+}
+
+model ExpenseVoucher {
+  id                 String    @id @default(uuid())
+  tenantId           String    @default("default-shop")
+  tenant             Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voucherNumber      String
+  title              String
+  category           String    // "rent", "utilities", "maintenance", "marketing", "supplies", "petty_cash", "other"
+  amount             Float     @default(0)
+  taxAmount          Float     @default(0)
+  totalAmount        Float     @default(0)
+  paymentMethod      String    @default("cash") // "cash", "bank_transfer", "card", "petty_cash"
+  paymentDate        DateTime  @default(now())
+  accountId          String?
+  account            Account?  @relation("ExpenseAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  paidFromAccountId  String?
+  paidFromAccount    Account?  @relation("PaidFromAccount", fields: [paidFromAccountId], references: [id], onDelete: SetNull)
+  payee              String?
+  referenceNumber    String?
+  receiptUrl         String?
+  notes              String?
+  status             String    @default("paid") // "paid", "pending", "cancelled"
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([tenantId, voucherNumber])
+}
+
+model AccountingPeriod {
+  id        String    @id @default(uuid())
+  tenantId  String    @default("default-shop")
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  isClosed  Boolean   @default(false)
+  closedAt  DateTime?
+  closedBy  String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, name])
+}
+
+model PayrollDisbursement {
+  id             String    @id @default(uuid())
+  tenantId       String    @default("default-shop")
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  periodMonth    Int       // 1 - 12
+  periodYear     Int       // e.g. 2026
+  staffCount     Int       @default(0)
+  totalAmount    Float     @default(0)
+  basePay        Float     @default(0)
+  overtimePay    Float     @default(0)
+  deductions     Float     @default(0)
+  bonuses        Float     @default(0)
+  paymentMethod  String    @default("bank_transfer") // "bank_transfer", "cash"
+  status         String    @default("completed") // "draft", "completed", "cancelled"
+  journalEntryId String?
+  notes          String?
+  disbursedAt    DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model StockMovement {
+  id           String      @id @default(uuid())
+  tenantId     String      @default("default-shop")
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  type         String      // "in_purchase", "out_sale_b2b", "out_waste", "out_recipe_pos", "adjustment"
+  ingredientId String?
+  ingredient   Ingredient? @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  quantity     Float
+  unitCost     Float       @default(0)
+  totalAmount  Float       @default(0)
+  reference    String?     // e.g. Customer/Client name, Invoice #, POS Order #
+  notes        String?
+  staffId      String?
+  createdAt    DateTime    @default(now())
+}
+
+
+
+

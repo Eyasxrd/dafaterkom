@@ -3,7 +3,7 @@
 import React, { useEffect } from 'react'
 import { AlertOctagon, RefreshCw, Home } from 'lucide-react'
 
-export default function ErrorBoundary({
+export default function Error({
   error,
   reset,
 }: {
@@ -33,6 +33,7 @@ export default function ErrorBoundary({
         )}
         <div className="pt-2 flex gap-3">
           <button
+            key="btn-reset"
             onClick={() => reset()}
             className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-600/20"
           >
@@ -40,7 +41,8 @@ export default function ErrorBoundary({
             Try Again
           </button>
           <button
-            onClick={() => window.location.href = '/'}
+            key="btn-reload"
+            onClick={() => window.location.reload()}
             className="flex-1 py-2.5 px-4 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 font-semibold text-xs flex items-center justify-center gap-2 transition-colors"
           >
             <Home className="w-4 h-4" />

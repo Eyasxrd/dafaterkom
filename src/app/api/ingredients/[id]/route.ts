@@ -8,7 +8,7 @@ export async function PATCH(
   try {
     const { id } = await params
     const body = await request.json()
-    const { name, description, quantity, unit, lowStockThreshold } = body
+    const { name, description, quantity, unit, lowStockThreshold, costPerUnit } = body
 
     const ingredient = await prisma.ingredient.update({
       where: { id },
@@ -18,6 +18,7 @@ export async function PATCH(
         ...(quantity !== undefined && { quantity: parseFloat(quantity) }),
         ...(unit && { unit }),
         ...(lowStockThreshold !== undefined && { lowStockThreshold: parseFloat(lowStockThreshold) }),
+        ...(costPerUnit !== undefined && { costPerUnit: parseFloat(costPerUnit) }),
         ...(quantity !== undefined && { lastRestocked: new Date() })
       }
     })

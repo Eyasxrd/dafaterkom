@@ -74,7 +74,7 @@ export default function StockExcelImporter({ onNavigateToInventory }: StockExcel
   const [rawSheetData, setRawSheetData] = useState<any[]>([])
 
   // Configuration state
-  const [targetType, setTargetType] = useState<'menu_items' | 'ingredients'>('menu_items')
+  const [targetType, setTargetType] = useState<'menu_items' | 'ingredients'>('ingredients')
   const [duplicateMode, setDuplicateMode] = useState<'add' | 'overwrite'>('add')
   const [mapping, setMapping] = useState<ColumnMapping>({
     name: '',
@@ -619,8 +619,8 @@ export default function StockExcelImporter({ onNavigateToInventory }: StockExcel
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="menu_items">POS Menu Items & Retail Stock</SelectItem>
-                  <SelectItem value="ingredients">Raw Kitchen Recipe Ingredients</SelectItem>
+                  <SelectItem value="ingredients">🥗 Raw Ingredients & Recipe Supplies (المكونات والمواد الخام)</SelectItem>
+                  <SelectItem value="menu_items">☕ POS Sellable Menu Items (منتجات وقائمة البيع)</SelectItem>
                 </SelectContent>
               </Select>
             </Card>

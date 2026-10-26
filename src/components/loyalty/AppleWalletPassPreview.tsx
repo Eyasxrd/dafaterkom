@@ -16,15 +16,16 @@ import {
 import { getLoyaltyTier } from '@/lib/apple-wallet/pass-types'
 
 interface AppleWalletPassPreviewProps {
-  customer: {
-    id: string
-    name: string
+  customer?: {
+    id?: string
+    name?: string
     phone?: string | null
-    loyaltyPoints: number
+    loyaltyPoints?: number
     createdAt?: string | Date
   }
   tenant?: {
     businessName?: string
+    currency?: string
     geofenceLat?: number | null
     geofenceLng?: number | null
   }
@@ -33,17 +34,35 @@ interface AppleWalletPassPreviewProps {
     labelColor?: string
     foregroundColor?: string
   }
+  // Standalone props for previewing in Campaign Manager or designer
+  businessName?: string
+  customerName?: string
+  points?: number
+  tierName?: string
+  gradient?: string
 }
 
 export default function AppleWalletPassPreview({
   customer,
   tenant,
-  customColors
+  customColors,
+  businessName: businessNameProp,
+  customerName,
+  points,
+  tierName,
+  gradient
 }: AppleWalletPassPreviewProps) {
   const [flipped, setFlipped] = useState(false)
-  const tier = getLoyaltyTier(customer.loyaltyPoints)
-  const shortId = customer.id.slice(-6).toUpperCase()
-  const businessName = tenant?.businessName || 'Dafaterkom Café'
+  const displayPoints = points ?? customer?.loyaltyPoints ?? 0
+  const tier = tierName || getLoyaltyTier(displayPoints)
+  const shortId = (customer?.id ? customer.id.slice(-6) : 'DEMO01').toUpperCase()
+  const businessName = businessNameProp || tenant?.businessName || 'Dafaterkom Café'
+  const displayName = customerName || customer?.name || 'Valued Customer'
+  const displayPhone = customer?.phone || 'Not linked'
+  const backgroundStyle =
+    customColors?.backgroundColor ||
+    gradient ||
+    'linear-gradient(135deg, #059669 0%, #047857 50%, #064e3b 100%)'
 
   return (
     <div className="flex flex-col items-center space-y-3">
@@ -52,9 +71,7 @@ export default function AppleWalletPassPreview({
         <div
           className={`relative w-full rounded-3xl p-5 shadow-2xl transition-all duration-500 border border-emerald-400/30 overflow-hidden text-white`}
           style={{
-            background:
-              customColors?.backgroundColor ||
-              'linear-gradient(135deg, #059669 0%, #047857 50%, #064e3b 100%)',
+            background: backgroundStyle,
             boxShadow: '0 20px 40px -15px rgba(5, 150, 105, 0.4)'
           }}
         >
@@ -83,7 +100,7 @@ export default function AppleWalletPassPreview({
                     POINTS
                   </span>
                   <span className="text-2xl font-extrabold font-mono text-white leading-none">
-                    {customer.loyaltyPoints}
+                    {displayPoints}
                   </span>
                 </div>
               </div>
@@ -94,7 +111,7 @@ export default function AppleWalletPassPreview({
                   MEMBER
                 </div>
                 <div className="text-xl font-bold tracking-tight text-white truncate">
-                  {customer.name}
+                  {displayName}
                 </div>
               </div>
 
@@ -167,7 +184,7 @@ export default function AppleWalletPassPreview({
                 <div className="space-y-1">
                   <div className="text-[10px] font-bold uppercase text-emerald-200">How to Earn</div>
                   <p className="text-[11px] text-white/90 leading-snug">
-                    Earn 1 loyalty point for every $1 spent at {businessName}.
+                    Earn 1 loyalty point for every 1 {tenant?.currency || 'EGP'} spent at {businessName}.
                   </p>
                 </div>
 
@@ -189,7 +206,7 @@ export default function AppleWalletPassPreview({
                 <div className="space-y-1">
                   <div className="text-[10px] font-bold uppercase text-emerald-200">Phone Number</div>
                   <div className="text-[11px] font-mono text-white/90">
-                    {customer.phone || 'Not linked'}
+                    {displayPhone}
                   </div>
                 </div>
               </div>

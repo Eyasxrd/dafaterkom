@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react'
 import { 
   CheckCircle2, 
-  Circle, 
   ChevronRight, 
   X, 
   Sparkles, 
@@ -13,7 +12,9 @@ import {
   Users, 
   ShoppingBag,
   PartyPopper,
-  ArrowUpRight
+  ArrowUpRight,
+  Layers,
+  Monitor
 } from 'lucide-react'
 
 interface SetupChecklistProps {
@@ -28,14 +29,20 @@ export default function SetupChecklist({ onOpenWizard, onStartTour, onRefreshTri
   const [progressPercent, setProgressPercent] = useState(0)
   const [steps, setSteps] = useState({
     profile: false,
+    operations: false,
     menu: false,
     tax: false,
+    hardware: false,
     staff: false,
     firstSale: false
   })
   const [counts, setCounts] = useState({
     menuItems: 0,
+    categories: 0,
+    ingredients: 0,
+    tables: 0,
     staff: 0,
+    devices: 0,
     orders: 0
   })
 
@@ -51,7 +58,15 @@ export default function SetupChecklist({ onOpenWizard, onStartTour, onRefreshTri
         const data = await res.json()
         setSteps(data.completedSteps || {})
         setProgressPercent(data.progressPercent || 0)
-        setCounts(data.counts || { menuItems: 0, staff: 0, orders: 0 })
+        setCounts(data.counts || {
+          menuItems: 0,
+          categories: 0,
+          ingredients: 0,
+          tables: 0,
+          staff: 0,
+          devices: 0,
+          orders: 0
+        })
       }
     } catch (e) {
       console.error('Failed to fetch setup status:', e)
@@ -75,47 +90,63 @@ export default function SetupChecklist({ onOpenWizard, onStartTour, onRefreshTri
   const items = [
     { 
       key: 'profile', 
-      label: 'Shop profile & currency', 
-      detail: 'Configure name, geofence radius', 
+      label: 'Store Profile & Currency', 
+      detail: 'Name, currency, address', 
       icon: Store,
       done: steps.profile,
       action: () => onOpenWizard(1)
     },
     { 
-      key: 'menu', 
-      label: 'Menu catalog & items', 
-      detail: counts.menuItems > 0 ? `${counts.menuItems} items active` : 'Choose starter menu template', 
-      icon: Utensils,
-      done: steps.menu,
+      key: 'operations', 
+      label: 'Operations & Dining Floor', 
+      detail: counts.tables > 0 ? `${counts.tables} tables active` : 'Set up floor tables', 
+      icon: Layers,
+      done: steps.operations,
       action: () => onOpenWizard(2)
     },
     { 
-      key: 'tax', 
-      label: 'Tax rate & receipt format', 
-      detail: 'Set VAT/Tax % and thermal header', 
-      icon: Receipt,
-      done: steps.tax,
+      key: 'menu', 
+      label: 'Menu Catalog & Recipes', 
+      detail: counts.menuItems > 0 ? `${counts.menuItems} items active` : 'Choose starter menu', 
+      icon: Utensils,
+      done: steps.menu,
       action: () => onOpenWizard(3)
     },
     { 
-      key: 'staff', 
-      label: 'Staff join code', 
-      detail: counts.staff > 0 ? `${counts.staff} staff members` : 'Share 6-digit login code', 
-      icon: Users,
-      done: steps.staff,
+      key: 'tax', 
+      label: 'VAT & Stock Accounting', 
+      detail: 'Set tax % and FIFO/WAC', 
+      icon: Receipt,
+      done: steps.tax,
       action: () => onOpenWizard(4)
     },
     { 
+      key: 'hardware', 
+      label: '80mm Receipt & Station', 
+      detail: 'Thermal slip & terminal role', 
+      icon: Monitor,
+      done: steps.hardware,
+      action: () => onOpenWizard(5)
+    },
+    { 
+      key: 'staff', 
+      label: 'Staff Fast Join Code', 
+      detail: counts.staff > 0 ? `${counts.staff} staff members` : 'Share 6-digit clock-in', 
+      icon: Users,
+      done: steps.staff,
+      action: () => onOpenWizard(6)
+    },
+    { 
       key: 'firstSale', 
-      label: 'Complete first sale', 
-      detail: counts.orders > 0 ? `${counts.orders} completed sales` : 'Ring up a practice order', 
+      label: 'Complete First Sale', 
+      detail: counts.orders > 0 ? `${counts.orders} completed sales` : 'Ring up a test order', 
       icon: ShoppingBag,
       done: steps.firstSale,
       action: () => {
         if (onStartTour) {
           onStartTour()
         } else {
-          onOpenWizard(6)
+          onOpenWizard(7)
         }
       }
     }
@@ -124,12 +155,12 @@ export default function SetupChecklist({ onOpenWizard, onStartTour, onRefreshTri
   const isAllComplete = progressPercent === 100
 
   return (
-    <div className="mx-4 md:mx-8 mb-6 p-4 md:p-5 rounded-3xl glass-panel border border-blue-500/20 dark:border-blue-400/20 shadow-xl relative overflow-hidden transition-all duration-300">
+    <div className="mx-2 sm:mx-4 md:mx-6 mb-6 p-4 md:p-5 rounded-3xl glass-panel border border-blue-500/20 dark:border-blue-400/20 shadow-xl relative overflow-hidden transition-all duration-300">
       
       {/* Top Banner Row */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className={`p-2.5 rounded-2xl shadow-sm ${
+          <div className={`p-2.5 rounded-2xl shadow-sm shrink-0 ${
             isAllComplete 
               ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' 
               : 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
@@ -137,9 +168,9 @@ export default function SetupChecklist({ onOpenWizard, onStartTour, onRefreshTri
             {isAllComplete ? <PartyPopper className="w-5 h-5" /> : <Sparkles className="w-5 h-5" />}
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h4 className="font-extrabold text-sm text-slate-900 dark:text-white tracking-tight">
-                Quick Setup Checklist
+                Store Onboarding & Setup Progress
               </h4>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                 isAllComplete 
@@ -151,19 +182,19 @@ export default function SetupChecklist({ onOpenWizard, onStartTour, onRefreshTri
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               {isAllComplete 
-                ? 'Your café is 100% configured for real-time POS, LAN offline sync, and thermal receipts!' 
-                : 'Complete these quick steps to get your counter ready for customers.'}
+                ? 'Your store is 100% configured for real-time POS, offline LAN mesh sync, recipes, and thermal receipts!' 
+                : 'Follow this guided checklist to get your store and registers operational in minutes.'}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-end sm:self-auto">
           {!isAllComplete && (
             <button
               onClick={() => onOpenWizard(1)}
               className="px-3.5 py-1.5 rounded-xl liquid-btn-primary text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-md"
             >
-              <span>Launch Wizard</span>
+              <span>Launch Detailed Wizard</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           )}
@@ -190,7 +221,7 @@ export default function SetupChecklist({ onOpenWizard, onStartTour, onRefreshTri
       </div>
 
       {/* Checklist Interactive Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 pt-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5 pt-4">
         {items.map((item) => {
           const Icon = item.icon
           return (
@@ -217,7 +248,7 @@ export default function SetupChecklist({ onOpenWizard, onStartTour, onRefreshTri
               </div>
 
               <div>
-                <div className={`text-xs font-bold leading-tight ${item.done ? 'text-slate-900 dark:text-white' : 'text-slate-800 dark:text-slate-200'}`}>
+                <div className={`text-[11px] font-bold leading-tight ${item.done ? 'text-slate-900 dark:text-white' : 'text-slate-800 dark:text-slate-200'}`}>
                   {item.label}
                 </div>
                 <div className="text-[10px] text-slate-400 truncate mt-0.5">

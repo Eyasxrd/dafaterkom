@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   try {
     const tenantId = getTenantIdFromRequest(request)
     const body = await request.json()
-    const { name, description, quantity, unit, lowStockThreshold } = body
+    const { name, description, quantity, unit, lowStockThreshold, costPerUnit } = body
 
     const ingredient = await prisma.ingredient.create({
       data: {
@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
         quantity: parseFloat(quantity) || 0,
         unit,
         lowStockThreshold: parseFloat(lowStockThreshold) || 10,
+        costPerUnit: parseFloat(costPerUnit) || 0,
         lastRestocked: new Date()
       }
     })

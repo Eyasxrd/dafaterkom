@@ -510,7 +510,7 @@ export default function SubscriptionSettings() {
 
             <div className="border-t border-b border-dashed border-slate-300 dark:border-slate-700 py-2 flex justify-between font-bold text-sm">
               <span>TOTAL PAID:</span>
-              <span>${selectedInvoiceForReceipt.amount.toFixed(2)} USD</span>
+              <span>${selectedInvoiceForReceipt.amount.toFixed(2)} {selectedInvoiceForReceipt.currency || tenant?.currency || 'USD'}</span>
             </div>
 
             <div className="text-center text-[10px] text-slate-500 dark:text-slate-400">

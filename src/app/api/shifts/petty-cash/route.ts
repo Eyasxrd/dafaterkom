@@ -34,6 +34,8 @@ export async function GET(request: NextRequest) {
         type: log.action as 'cash_in' | 'cash_out',
         amount: details.amount ?? 0,
         reason: details.reason || log.notes || '',
+        paymentMethod: details.paymentMethod || 'drawer_cash',
+        category: details.category || 'General',
         timestamp: log.timestamp
       }
     })
@@ -49,7 +51,15 @@ export async function POST(request: NextRequest) {
   try {
     const tenantId = getTenantIdFromRequest(request)
     const body = await request.json()
-    const { shiftId, staffId, type, amount, reason } = body
+    const { 
+      shiftId, 
+      staffId, 
+      type, 
+      amount, 
+      reason,
+      paymentMethod = 'drawer_cash',
+      category = 'General' 
+    } = body
 
     if (!shiftId) {
       return NextResponse.json({ error: 'shiftId is required' }, { status: 400 })
@@ -90,10 +100,12 @@ export async function POST(request: NextRequest) {
         afterValue: JSON.stringify({
           amount: parsedAmount,
           reason: reason.trim(),
+          paymentMethod,
+          category,
           type,
           recordedAt: new Date().toISOString()
         }),
-        notes: `[Petty Cash ${type === 'cash_in' ? 'IN (+)' : 'OUT (-)'}] $${parsedAmount.toFixed(2)} - ${reason.trim()}`
+        notes: `[Petty Cash ${type === 'cash_in' ? 'IN (+)' : 'OUT (-)'}] $${parsedAmount.toFixed(2)} (${paymentMethod}) - ${reason.trim()}`
       }
     })
 
@@ -105,6 +117,8 @@ export async function POST(request: NextRequest) {
         type,
         amount: parsedAmount,
         reason: reason.trim(),
+        paymentMethod,
+        category,
         timestamp: log.timestamp
       }
     })

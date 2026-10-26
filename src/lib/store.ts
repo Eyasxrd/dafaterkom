@@ -13,9 +13,14 @@ interface AuthState {
     name: string
     email: string
     role: string
+    phone?: string | null
+    totpEnabled?: boolean
+    department?: string | null
+    jobTitle?: string | null
   } | null
   isAuthenticated: boolean
-  login: (user: { id: string; name: string; email: string; role: string }) => void
+  login: (user: { id: string; name: string; email: string; role: string; phone?: string | null; totpEnabled?: boolean; department?: string | null; jobTitle?: string | null }) => void
+  updateUser: (partialUser: Partial<{ name: string; email: string; phone: string | null; department: string | null; jobTitle: string | null }>) => void
   logout: () => void
 }
 
@@ -43,6 +48,10 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       isAuthenticated: false,
       login: (user) => set({ user, isAuthenticated: true }),
+      updateUser: (partialUser) =>
+        set((state) => ({
+          user: state.user ? { ...state.user, ...partialUser } : null
+        })),
       logout: () => {
         // Ping backend to clear cookie as well
         if (typeof window !== 'undefined') {

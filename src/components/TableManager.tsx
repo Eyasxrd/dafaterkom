@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useLocale } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import ReceiptModal, { ReceiptData } from '@/components/ReceiptModal'
 import TableTentModal from '@/components/TableTentModal'
 import { useAuthStore } from '@/lib/store'
+import { formatCurrency, getCurrencySymbol } from '@/lib/currency'
 import { 
   RotateCcw, 
   Clock, 
@@ -20,7 +22,9 @@ import {
   QrCode,
   Bell,
   CreditCard,
-  CheckCheck
+  CheckCheck,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react'
 
 interface TableServiceRequest {
@@ -70,6 +74,9 @@ export default function TableManager({ onSelectTableForPOS }: TableManagerProps)
   const { user } = useAuthStore()
   const canManageTables = user?.role === 'admin' || user?.role === 'manager'
 
+  const locale = useLocale() || 'en'
+  const isAr = locale === 'ar'
+  const [tenantInfo, setTenantInfo] = useState<any>(null)
   const [tables, setTables] = useState<RestaurantTable[]>([])
   const [activeOrders, setActiveOrders] = useState<TableOrder[]>([])
   const [serviceRequests, setServiceRequests] = useState<TableServiceRequest[]>([])
@@ -78,6 +85,7 @@ export default function TableManager({ onSelectTableForPOS }: TableManagerProps)
   const [selectedTableForTent, setSelectedTableForTent] = useState<RestaurantTable | null>(null)
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null)
   const [isReceiptOpen, setIsReceiptOpen] = useState(false)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   // Web Audio chime for incoming service alerts
   const playServiceChime = () => {
@@ -113,6 +121,7 @@ export default function TableManager({ onSelectTableForPOS }: TableManagerProps)
     fetchTables()
     fetchActiveOrders()
     fetchServiceRequests()
+    fetch('/api/tenant').then(r => r.json()).then(setTenantInfo).catch(() => {})
     const interval = setInterval(() => {
       fetchActiveOrders()
       fetchServiceRequests()
@@ -209,6 +218,8 @@ export default function TableManager({ onSelectTableForPOS }: TableManagerProps)
         setIsAddTableOpen(false)
         setTableNameInput('')
         fetchTables()
+        setFeedback({ type: 'success', message: `Table #${tableNumberInput} added successfully` })
+        setTimeout(() => setFeedback(null), 4000)
       } else {
         setAddError(data.error || 'Failed to add table')
       }
@@ -232,11 +243,16 @@ export default function TableManager({ onSelectTableForPOS }: TableManagerProps)
       const data = await res.json()
       if (res.ok) {
         fetchTables()
+        setFeedback({ type: 'success', message: `Table #${table.number} deleted successfully` })
+        setTimeout(() => setFeedback(null), 4000)
       } else {
-        alert(data.error || 'Failed to delete table')
+        setFeedback({ type: 'error', message: data.error || 'Failed to delete table' })
+        setTimeout(() => setFeedback(null), 4000)
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to delete table:', err)
+      setFeedback({ type: 'error', message: err.message || 'Failed to delete table' })
+      setTimeout(() => setFeedback(null), 4000)
     }
   }
 
@@ -273,7 +289,33 @@ export default function TableManager({ onSelectTableForPOS }: TableManagerProps)
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
+      {/* Feedback Banner */}
+      {feedback && (
+        <div
+          className={`p-3 sm:p-4 rounded-xl text-sm font-medium flex items-center justify-between shadow-sm animate-in fade-in-50 duration-200 ${
+            feedback.type === 'success'
+              ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40'
+              : 'bg-rose-50 dark:bg-rose-950/30 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800/40'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {feedback.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
+            )}
+            <span>{feedback.message}</span>
+          </div>
+          <button
+            onClick={() => setFeedback(null)}
+            className="text-xs font-semibold underline opacity-70 hover:opacity-100 ml-4"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -493,7 +535,7 @@ export default function TableManager({ onSelectTableForPOS }: TableManagerProps)
                     </div>
                     <div className="pt-2 border-t border-slate-200/60 dark:border-white/[0.08] flex justify-between items-center font-extrabold text-sm text-blue-600 dark:text-blue-400">
                       <span>Bill:</span>
-                      <span>${order.totalAmount.toFixed(2)}</span>
+                      <span>{formatCurrency(order.totalAmount, tenantInfo?.currency, isAr)}</span>
                     </div>
                   </div>
                 ) : (
@@ -584,7 +626,7 @@ export default function TableManager({ onSelectTableForPOS }: TableManagerProps)
                     {selectedTableOrder.orderStatus}
                   </span>
                   <p className="text-base font-black text-blue-600 dark:text-blue-400 mt-1.5">
-                    ${selectedTableOrder.totalAmount.toFixed(2)}
+                    {formatCurrency(selectedTableOrder.totalAmount, tenantInfo?.currency, isAr)}
                   </p>
                 </div>
               </div>
@@ -599,7 +641,7 @@ export default function TableManager({ onSelectTableForPOS }: TableManagerProps)
                         <span className="font-semibold text-slate-800 dark:text-slate-200">{i.quantity}x {i.menuItem.name}</span>
                         {i.notes && <p className="text-blue-600 dark:text-blue-400 text-[11px] mt-0.5 font-medium">{i.notes}</p>}
                       </div>
-                      <span className="font-bold text-slate-700 dark:text-slate-300">${i.subtotal.toFixed(2)}</span>
+                      <span className="font-bold text-slate-700 dark:text-slate-300">{formatCurrency(i.subtotal, tenantInfo?.currency, isAr)}</span>
                     </div>
                   ))}
                 </div>

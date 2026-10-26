@@ -1,47 +1,75 @@
 'use client'
 
+import { useLocale } from 'next-intl'
+import { usePathname } from 'next/navigation'
 import { useLanguageStore } from '@/lib/store'
-import { useRouter, usePathname } from 'next/navigation'
-import { useTransition } from 'react'
 import { Languages } from 'lucide-react'
 
-export default function LanguageToggle() {
-  const { locale, setLocale } = useLanguageStore()
-  const router = useRouter()
-  const pathname = usePathname()
-  const [isPending, startTransition] = useTransition()
+interface LanguageToggleProps {
+  compact?: boolean
+  className?: string
+}
+
+export default function LanguageToggle({ compact = false, className = '' }: LanguageToggleProps) {
+  const currentLocale = useLocale()
+  const pathname = usePathname() || ''
+  const { setLocale } = useLanguageStore()
 
   const switchLocale = (newLocale: string) => {
-    startTransition(() => {
-      setLocale(newLocale)
-      // Remove the current locale from pathname and add the new one
-      const segments = pathname.split('/')
-      const segmentsWithoutLocale = segments.filter(segment => segment !== locale)
-      const newPathname = `/${newLocale}${segmentsWithoutLocale.join('/') || ''}`
-      router.push(newPathname)
-    })
+    if (newLocale === currentLocale) return
+
+    setLocale(newLocale)
+
+    if (typeof document !== 'undefined') {
+      document.cookie = `NEXT_LOCALE=${newLocale}; path=/; max-age=31536000; SameSite=Lax`
+      localStorage.setItem('locale', newLocale)
+    }
+
+    // Strip existing locale (/en or /ar) from the beginning of pathname
+    const cleanPath = pathname.replace(/^\/(en|ar)(\/|$)/, '/')
+    const targetPath = `/${newLocale}${cleanPath === '/' ? '' : cleanPath}`
+
+    // Full document navigation ensures the App Router root layout re-renders
+    // with the new locale, proper text direction (RTL/LTR), and new messages dictionary.
+    window.location.href = targetPath
+  }
+
+  if (compact) {
+    return (
+      <button
+        type="button"
+        suppressHydrationWarning
+        onClick={() => switchLocale(currentLocale === 'en' ? 'ar' : 'en')}
+        className={`w-9 h-9 rounded-xl border border-slate-200/80 dark:border-white/10 hover:bg-slate-100/70 dark:hover:bg-white/[0.06] flex items-center justify-center font-bold text-xs cursor-pointer transition-colors ${className}`}
+        title={currentLocale === 'en' ? 'Switch to Arabic' : 'Switch to English'}
+      >
+        {currentLocale === 'en' ? 'AR' : 'EN'}
+      </button>
+    )
   }
 
   return (
-    <div className="flex items-center gap-1 p-1 rounded-xl glass-pill">
-      <Languages className="w-3.5 h-3.5 ml-1.5 mr-0.5 text-slate-400" />
+    <div className={`flex items-center gap-1 p-0.5 rounded-xl glass-pill ${className}`} suppressHydrationWarning>
+      <Languages className="w-3.5 h-3.5 ms-1.5 me-0.5 text-slate-400 shrink-0" />
       <button
+        type="button"
+        suppressHydrationWarning
         onClick={() => switchLocale('en')}
-        disabled={isPending}
         className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-          locale === 'en'
-            ? 'liquid-btn-primary shadow-sm'
+          currentLocale === 'en'
+            ? 'liquid-btn-primary shadow-sm text-white'
             : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
         }`}
       >
         EN
       </button>
       <button
+        type="button"
+        suppressHydrationWarning
         onClick={() => switchLocale('ar')}
-        disabled={isPending}
         className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-          locale === 'ar'
-            ? 'liquid-btn-primary shadow-sm'
+          currentLocale === 'ar'
+            ? 'liquid-btn-primary shadow-sm text-white'
             : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
         }`}
       >

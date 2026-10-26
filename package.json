@@ -1,6 +1,8 @@
 {
   "name": "dafaterkom-system",
   "version": "0.1.0",
+  "description": "Dafaterkom POS & Management System for Windows",
+  "author": "Dafaterkom",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -9,7 +11,7 @@
     "lint": "eslint",
     "postinstall": "prisma skills sync || exit 0",
     "seed": "tsx prisma/seed.ts",
-    "electron:dev": "npm run dev",
+    "electron:dev": "concurrently \"next dev\" \"wait-on tcp:3000 && electron .\"",
     "electron:build": "next build && tsc -p electron/tsconfig.json && electron-builder",
     "electron:pack": "next build && tsc -p electron/tsconfig.json && electron-builder --dir"
   },
@@ -20,6 +22,7 @@
   "build": {
     "appId": "com.dafaterkom.pos",
     "productName": "Dafaterkom POS",
+    "npmRebuild": false,
     "directories": {
       "output": "dist"
     },
@@ -27,7 +30,6 @@
       "electron/**/*",
       "out/**/*",
       "public/**/*",
-      "node_modules/**/*",
       "prisma/**/*"
     ],
     "win": {
@@ -54,7 +56,9 @@
     "qrcode": "^1.5.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "sharp": "^0.35.4",
     "tailwind-merge": "^3.6.0",
+    "tesseract.js": "^7.0.0",
     "tsx": "^4.23.13",
     "xlsx": "^0.18.5",
     "zustand": "^5.0.15"

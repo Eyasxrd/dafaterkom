@@ -4,7 +4,7 @@ import createNextIntlPlugin from 'next-intl/plugin';
 const withNextIntl = createNextIntlPlugin('./src/i18n.ts');
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ['127.0.0.1'],
+  allowedDevOrigins: ['*.trycloudflare.com', 'localhost', '127.0.0.1'],
   typescript: {
     ignoreBuildErrors: true,
   },

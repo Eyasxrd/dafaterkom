@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
   try {
     const tenantId = getTenantIdFromRequest(request)
     const body = await request.json()
-    const { name, email, phone, loyaltyPoints } = body
+    const { name, email, phone, dateOfBirth, loyaltyPoints } = body
 
     if (!name || !name.trim()) {
       return NextResponse.json({ error: 'Customer name is required' }, { status: 400 })
@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
         name: name.trim(),
         email: email?.trim() || null,
         phone: phone?.trim() || null,
+        dateOfBirth: dateOfBirth?.trim() || null,
         loyaltyPoints: parseInt(loyaltyPoints) || 0
       }
     })

@@ -89,6 +89,7 @@ export interface BuildPassOptions {
     geofenceRadius?: number | null
     receiptHeader?: string | null
     receiptFooter?: string | null
+    currency?: string | null
   }
   customConfig?: {
     backgroundColor?: string
@@ -204,7 +205,7 @@ export function buildPassJson(options: BuildPassOptions): ApplePassJson {
           key: 'terms',
           label: 'How to Earn & Redeem',
           value:
-            'Earn 1 loyalty point for every $1 spent at the register. Redeem 30 points for an Artisan Cookie, or 50 points for a Double Espresso! Present this pass at checkout.'
+            `Earn 1 loyalty point for every 1 ${tenant.currency || 'EGP'} spent at the register. Redeem 30 points for an Artisan Cookie, or 50 points for a Double Espresso! Present this pass at checkout.`
         },
         {
           key: 'storeInfo',

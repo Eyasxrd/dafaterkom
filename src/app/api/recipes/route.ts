@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { menuItemId, ingredientId, quantity } = body
+    const { menuItemId, ingredientId, quantity, sizeMultipliers, isOptional } = body
 
     if (!menuItemId || !ingredientId) {
       return NextResponse.json({ error: 'Menu item ID and ingredient ID are required' }, { status: 400 })
@@ -36,7 +36,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Quantity must be greater than 0' }, { status: 400 })
     }
 
-    // Upsert so if ingredient is already on this recipe, we update its quantity
+    const sizeMultipliersStr = typeof sizeMultipliers === 'object' && sizeMultipliers !== null
+      ? JSON.stringify(sizeMultipliers)
+      : typeof sizeMultipliers === 'string'
+      ? sizeMultipliers
+      : null
+
+    // Upsert so if ingredient is already on this recipe, we update its quantity and attributes
     const recipe = await prisma.recipe.upsert({
       where: {
         menuItemId_ingredientId: {
@@ -45,12 +51,16 @@ export async function POST(request: NextRequest) {
         }
       },
       update: {
-        quantity: qty
+        quantity: qty,
+        sizeMultipliers: sizeMultipliersStr,
+        isOptional: Boolean(isOptional)
       },
       create: {
         menuItemId,
         ingredientId,
-        quantity: qty
+        quantity: qty,
+        sizeMultipliers: sizeMultipliersStr,
+        isOptional: Boolean(isOptional)
       },
       include: {
         ingredient: true,

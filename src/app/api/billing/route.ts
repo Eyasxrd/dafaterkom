@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       data: {
         tenantId,
         amount,
-        currency: 'USD',
+        currency: updatedTenant.currency || 'USD',
         status: 'paid',
         periodStart: new Date(),
         periodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),

@@ -5,27 +5,61 @@ import { getTenantIdFromRequest } from '@/lib/tenant-context'
 export async function GET(request: NextRequest) {
   try {
     const tenantId = getTenantIdFromRequest(request)
-    const inventory = await prisma.inventory.findMany({
-      where: {
-        menuItem: {
-          tenantId
-        }
-      },
+
+    // Fetch all ingredients for the tenant as the source of truth for inventory
+    const ingredients = await prisma.ingredient.findMany({
+      where: { tenantId },
       include: {
-        menuItem: {
+        recipes: {
           include: {
-            category: true
+            menuItem: {
+              select: {
+                id: true,
+                name: true,
+                price: true,
+                category: {
+                  select: { id: true, name: true }
+                }
+              }
+            }
           }
         }
       },
       orderBy: {
-        menuItem: {
-          name: 'asc'
-        }
+        name: 'asc'
       }
     })
-    return NextResponse.json(inventory)
-  } catch (error) {
+
+    const formattedInventory = ingredients.map((ing) => {
+      const recipesList = ing.recipes || []
+      const valuation = Math.round(ing.quantity * (ing.costPerUnit || 0) * 100) / 100
+
+      return {
+        id: ing.id,
+        name: ing.name,
+        description: ing.description,
+        quantity: ing.quantity,
+        unit: ing.unit,
+        lowStockThreshold: ing.lowStockThreshold,
+        costPerUnit: ing.costPerUnit || 0,
+        valuation,
+        lastRestocked: ing.lastRestocked,
+        recipesCount: recipesList.length,
+        recipes: recipesList.map((r) => ({
+          recipeId: r.id,
+          menuItemId: r.menuItemId,
+          menuItemName: r.menuItem?.name || 'Unknown Item',
+          categoryName: r.menuItem?.category?.name || 'General',
+          recipeQuantity: r.quantity
+        })),
+        createdAt: ing.createdAt,
+        updatedAt: ing.updatedAt
+      }
+    })
+
+    return NextResponse.json(formattedInventory)
+  } catch (error: any) {
+    console.error('Failed to fetch inventory ingredients:', error)
     return NextResponse.json({ error: 'Failed to fetch inventory' }, { status: 500 })
   }
 }
@@ -34,41 +68,43 @@ export async function POST(request: NextRequest) {
   try {
     const tenantId = getTenantIdFromRequest(request)
     const body = await request.json()
-    const { 
-      createNewItem, 
-      name, 
-      price, 
-      categoryId, 
-      newCategoryName, 
+    const {
+      name,
       description,
-      menuItemId, 
-      quantity, 
-      unit, 
+      quantity,
+      unit,
       lowStockThreshold,
+      costPerUnit,
       restock,
+      ingredientId,
       inventoryId,
       addQuantity
     } = body
 
-    // 1. Batch Restock mode: add stock to existing inventory item
-    if (restock && inventoryId && addQuantity) {
-      const existing = await prisma.inventory.findUnique({
-        where: { id: inventoryId }
+    const targetId = ingredientId || inventoryId
+
+    // 1. Quick Restock Mode (Add to existing ingredient stock)
+    if (restock && targetId && addQuantity) {
+      const existing = await prisma.ingredient.findUnique({
+        where: { id: targetId }
       })
 
-      if (!existing) {
-        return NextResponse.json({ error: 'Inventory record not found' }, { status: 404 })
+      if (!existing || existing.tenantId !== tenantId) {
+        return NextResponse.json({ error: 'Ingredient inventory record not found' }, { status: 404 })
       }
 
-      const updated = await prisma.inventory.update({
-        where: { id: inventoryId },
+      const numToAdd = parseFloat(addQuantity) || 0
+      const updated = await prisma.ingredient.update({
+        where: { id: targetId },
         data: {
-          quantity: existing.quantity + parseInt(addQuantity, 10),
+          quantity: Math.max(0, Math.round((existing.quantity + numToAdd) * 1000) / 1000),
           lastRestocked: new Date()
         },
         include: {
-          menuItem: {
-            include: { category: true }
+          recipes: {
+            include: {
+              menuItem: true
+            }
           }
         }
       })
@@ -76,101 +112,62 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(updated)
     }
 
-    // 2. Create Brand New Menu Item + Initial Stock
-    if (createNewItem) {
-      if (!name || !name.trim()) {
-        return NextResponse.json({ error: 'Item name is required' }, { status: 400 })
-      }
+    // 2. Create New Ingredient / Inventory Item
+    if (!name || !name.trim()) {
+      return NextResponse.json({ error: 'Ingredient name is required' }, { status: 400 })
+    }
 
-      let finalCategoryId = categoryId
+    const cleanName = name.trim()
 
-      // If new category name provided, or if no category exists, create/find category
-      if (!finalCategoryId) {
-        const catName = newCategoryName?.trim() || 'General'
-        let cat = await prisma.category.findFirst({
-          where: { tenantId, name: catName }
-        })
-        if (!cat) {
-          cat = await prisma.category.create({
-            data: { tenantId, name: catName }
-          })
-        }
-        finalCategoryId = cat.id
-      }
-
-      // Create MenuItem and Inventory together
-      const newMenuItem = await prisma.menuItem.create({
-        data: {
+    // Check if ingredient with this name already exists for this tenant
+    const existing = await prisma.ingredient.findUnique({
+      where: {
+        tenantId_name: {
           tenantId,
-          name: name.trim(),
-          description: description?.trim() || null,
-          price: parseFloat(price) || 0,
-          categoryId: finalCategoryId,
-          isAvailable: true,
-          inventory: {
-            create: {
-              quantity: parseInt(quantity, 10) || 0,
-              unit: unit || 'pieces',
-              lowStockThreshold: parseInt(lowStockThreshold, 10) || 10,
-              lastRestocked: new Date()
-            }
-          }
-        },
-        include: {
-          category: true,
-          inventory: true
+          name: cleanName
         }
-      })
-
-      return NextResponse.json(newMenuItem.inventory, { status: 201 })
-    }
-
-    // 3. Add inventory to existing MenuItem
-    if (!menuItemId) {
-      return NextResponse.json({ error: 'MenuItem ID is required' }, { status: 400 })
-    }
-
-    // Check if inventory already exists for this menuItem
-    const existing = await prisma.inventory.findUnique({
-      where: { menuItemId }
+      }
     })
 
     if (existing) {
-      const updated = await prisma.inventory.update({
+      const numQty = parseFloat(quantity) || 0
+      const updated = await prisma.ingredient.update({
         where: { id: existing.id },
         data: {
-          quantity: existing.quantity + (parseInt(quantity, 10) || 0),
+          quantity: existing.quantity + numQty,
           unit: unit || existing.unit,
-          lowStockThreshold: lowStockThreshold ? parseInt(lowStockThreshold, 10) : existing.lowStockThreshold,
+          lowStockThreshold: lowStockThreshold !== undefined ? parseFloat(lowStockThreshold) : existing.lowStockThreshold,
+          costPerUnit: costPerUnit !== undefined ? parseFloat(costPerUnit) : existing.costPerUnit,
+          description: description !== undefined ? description?.trim() || null : existing.description,
           lastRestocked: new Date()
-        },
-        include: {
-          menuItem: {
-            include: { category: true }
-          }
         }
       })
       return NextResponse.json(updated)
     }
 
-    const inventory = await prisma.inventory.create({
+    const newIngredient = await prisma.ingredient.create({
       data: {
-        menuItemId,
-        quantity: parseInt(quantity, 10) || 0,
-        unit: unit || 'pieces',
-        lowStockThreshold: parseInt(lowStockThreshold, 10) || 10,
+        tenantId,
+        name: cleanName,
+        description: description?.trim() || null,
+        quantity: parseFloat(quantity) || 0,
+        unit: unit?.trim() || 'grams',
+        lowStockThreshold: lowStockThreshold !== undefined ? parseFloat(lowStockThreshold) : 10,
+        costPerUnit: costPerUnit !== undefined ? parseFloat(costPerUnit) : 0,
         lastRestocked: new Date()
       },
       include: {
-        menuItem: {
-          include: { category: true }
+        recipes: {
+          include: {
+            menuItem: true
+          }
         }
       }
     })
 
-    return NextResponse.json(inventory, { status: 201 })
-  } catch (error) {
-    console.error('Failed to create/update inventory:', error)
-    return NextResponse.json({ error: 'Failed to create inventory item' }, { status: 500 })
+    return NextResponse.json(newIngredient, { status: 201 })
+  } catch (error: any) {
+    console.error('Failed to create/update inventory ingredient:', error)
+    return NextResponse.json({ error: error.message || 'Failed to create inventory ingredient' }, { status: 500 })
   }
 }
